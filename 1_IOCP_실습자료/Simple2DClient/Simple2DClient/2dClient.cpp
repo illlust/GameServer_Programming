@@ -7,7 +7,7 @@
 using namespace std;
 using namespace chrono;
 
-#include "..\..\SimpleIOCPServer\SimpleIOCPServer\protocol.h"
+#include "..\..\IOCPGameServer\IOCPGameServer\protocol.h"
 
 sf::TcpSocket g_socket;
 
@@ -18,7 +18,6 @@ constexpr auto TILE_WIDTH = 65;
 constexpr auto WINDOW_WIDTH = TILE_WIDTH * SCREEN_WIDTH + 10;   // size of window
 constexpr auto WINDOW_HEIGHT = TILE_WIDTH * SCREEN_WIDTH + 10;
 constexpr auto BUF_SIZE = 200;
-constexpr auto MAX_USER = 10;
 
 // 추후 확장용.
 int NPC_ID_START = 10000;
