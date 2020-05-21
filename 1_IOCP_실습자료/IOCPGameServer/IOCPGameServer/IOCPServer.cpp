@@ -41,6 +41,8 @@ struct CLIENT
 	//게임 콘텐츠 
 	short x, y;
 	char m_name[MAX_ID_LEN + 1];			//lock으로 보호
+
+	unsigned  m_move_time;
 };
 
 
@@ -95,6 +97,7 @@ void send_move_packet(int user_id, int mover)
 	p.type = S2C_MOVE;
 	p.x = g_clients[mover].x;
 	p.y = g_clients[mover].y;
+	p.move_time = g_clients[mover].m_move_time;
 
 	send_packet(user_id, &p); //&p로 주지 않으면 복사되어서 날라가니까 성능에 안좋다. 
 }
@@ -183,6 +186,7 @@ void process_packet(int user_id, char* buf)
 	}
 	case C2S_MOVE:
 	{	cs_packet_move *packet = reinterpret_cast<cs_packet_move*>(buf);
+		g_clients[user_id].m_move_time = packet->move_time;
 		do_move(user_id, packet->direction);
 		break;
 	}
