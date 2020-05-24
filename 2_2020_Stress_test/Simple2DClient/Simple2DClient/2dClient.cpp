@@ -1,3 +1,5 @@
+#include <SFML/Graphics.hpp>
+#include <SFML/Network.hpp>
 #include <windows.h>
 #include <iostream>
 #include <unordered_map>
@@ -16,7 +18,6 @@ constexpr auto TILE_WIDTH = 65;
 constexpr auto WINDOW_WIDTH = TILE_WIDTH * SCREEN_WIDTH / 2 + 10;   // size of window
 constexpr auto WINDOW_HEIGHT = TILE_WIDTH * SCREEN_WIDTH / 2 + 10;
 constexpr auto BUF_SIZE = 200;
-constexpr auto MAX_USER = 10;
 
 // 추후 확장용.
 int NPC_ID_START = 10000;
@@ -152,8 +153,8 @@ void ProcessPacket(char* ptr)
 
 		if (id == g_myid) {
 			avatar.move(my_packet->x, my_packet->y);
-			//g_left_x = my_packet->x - (SCREEN_WIDTH / 2);
-			//g_top_y = my_packet->y - (SCREEN_HEIGHT / 2);
+			g_left_x = my_packet->x - (SCREEN_WIDTH / 2);
+			g_top_y = my_packet->y - (SCREEN_HEIGHT / 2);
 			avatar.show();
 		}
 		else {
@@ -197,6 +198,22 @@ void ProcessPacket(char* ptr)
 		}
 	}
 	break;
+	case S2C_NEAR_PLAYER:
+	{
+		sc_packet_near *my_packet = reinterpret_cast<sc_packet_near *>(ptr);
+		int id = my_packet->id;
+
+		if (id == g_myid) {
+			avatar.move(my_packet->x, my_packet->y);
+			avatar.show();
+		}
+		/*else if (id < MAX_USER) {
+			players[id].move(my_packet->x, my_packet->y);
+			players[id].show();
+		}*/
+	}
+	break;
+	
 	default:
 		printf("Unknown PACKET type [%d]\n", ptr[1]);
 
@@ -249,16 +266,13 @@ void client_main()
 	if (recv_result != sf::Socket::NotReady)
 		if (received > 0) process_data(net_buf, received);
 
-	for (int i = 0; i < SCREEN_WIDTH; ++i) {
-		int tile_x = i + g_left_x;
-		if (tile_x >= WORLD_WIDTH) break;
-		if (tile_x < 0) continue;
+	for (int i = 0; i < SCREEN_WIDTH; ++i)
 		for (int j = 0; j < SCREEN_HEIGHT; ++j)
 		{
+			int tile_x = i + g_left_x;
 			int tile_y = j + g_top_y;
-			if (tile_y < 0) continue;
-			if (tile_y >= WORLD_HEIGHT) break;
-			// if (((tile_x + tile_y) % 2) == 0) {
+			if ((tile_x < 0) || (tile_y < 0)) continue;
+			//if (((tile_x + tile_y) % 2) == 0) {
 			if (((tile_x / 3 + tile_y / 3) % 2) == 0) {
 				white_tile.a_move(TILE_WIDTH * i + 7, TILE_WIDTH * j + 7);
 				white_tile.a_draw();
@@ -269,7 +283,6 @@ void client_main()
 				black_tile.a_draw();
 			}
 		}
-	}
 	avatar.draw();
 	//	for (auto &pl : players) pl.draw();
 	for (auto& npc : npcs) npc.second.draw();
@@ -328,7 +341,6 @@ int main()
 	view.zoom(2.0f);
 	view.move(SCREEN_WIDTH * TILE_WIDTH / 4, SCREEN_HEIGHT * TILE_WIDTH / 4);
 	g_window->setView(view);
-
 
 	while (window.isOpen())
 	{
