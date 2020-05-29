@@ -4,7 +4,9 @@
 #include <vector>
 #include <thread>
 #include <mutex>
-#include <set>
+#include <unordered_set>
+#include <atomic>
+
 #include "protocol.h"
 #pragma comment (lib, "WS2_32.lib")
 #pragma comment (lib, "mswsock.lib")
@@ -37,7 +39,8 @@ struct CLIENT
 	EXOVER	m_recv_over;
 	int		m_prev_size; 
 	char	m_packet_buf[MAX_PACKET_SIZE];		//조각난 거 받아두기 위한 버퍼
-	C_STATUS m_status;
+	
+	atomic<C_STATUS> m_status;
 
 	//게임 콘텐츠 
 	short x, y;
@@ -45,7 +48,7 @@ struct CLIENT
 
 	unsigned  m_move_time;
 
-	set<int> viewlist;
+	unordered_set<int> view_list; //순서가 상관없을 땐 unordered 쓰는게 더 속도가 빠르다 
 };
 
 
@@ -53,6 +56,7 @@ CLIENT g_clients[MAX_USER];		//클라이언트 동접만큼 저장하는 컨테이너 필요
 
 HANDLE g_iocp;					//iocp 핸들
 SOCKET listenSocket;			//서버 전체에 하나. 한번 정해지고 안바뀌니 데이터레이스 아님. 
+
 
 //lock으로 보호받고있는 함수
 void send_packet(int user_id, void *p)
@@ -103,8 +107,6 @@ void send_move_packet(int user_id, int mover)
 	p.move_time = g_clients[mover].m_move_time;
 
 	send_packet(user_id, &p); //&p로 주지 않으면 복사되어서 날라가니까 성능에 안좋다. 
-
-	g_clients[mover].viewlist.insert(user_id);
 }
 
 void send_enter_packet(int user_id, int o_id)
@@ -118,19 +120,13 @@ void send_enter_packet(int user_id, int o_id)
 	strcpy_s(p.name, g_clients[o_id].m_name);
 	p.o_type = O_PLAYER;
 
+	g_clients[user_id].m_cLock.lock();
+	g_clients[user_id].view_list.insert(o_id);
+	g_clients[user_id].m_cLock.unlock();
+
 	send_packet(user_id, &p); //&p로 주지 않으면 복사되어서 날라가니까 성능에 안좋다. 
 }
 
-bool is_near_object(int a, int b)
-{
-	return 5 >= abs(g_clients[a].x - g_clients[b].x) + abs(g_clients[a].y - g_clients[b].y);
-}
-
-bool is_near_id(int player, int other)
-{
-	//lock_guard<mutex> gl{ g_clients[player].m_cLock};
-	return (0 != g_clients[player].viewlist.count(other));
-}
 
 void send_near_packet(int client, int new_id)
 {
@@ -142,9 +138,6 @@ void send_near_packet(int client, int new_id)
 	packet.x = g_clients[new_id].x;
 	packet.y = g_clients[new_id].y;
 	send_packet(client, &packet);
-
-	//lock_guard<mutex> lg{ g_clients[client].m_cLock};
-	g_clients[client].viewlist.insert(new_id);
 }
 void send_leave_packet(int user_id, int o_id)
 {
@@ -153,7 +146,20 @@ void send_leave_packet(int user_id, int o_id)
 	p.size = sizeof(p);
 	p.type = S2C_LEAVE;
 
+	g_clients[user_id].m_cLock.lock();
+	g_clients[user_id].view_list.erase(o_id);
+	g_clients[user_id].m_cLock.unlock();
+
 	send_packet(user_id, &p); //&p로 주지 않으면 복사되어서 날라가니까 성능에 안좋다. 
+}
+
+//a 와 b가 서로 시야에 있나? 
+bool is_near(int a, int b)
+{
+	if (abs(g_clients[a].x - g_clients[b].x) > VIEW_RADIUS) return false;
+	if (abs(g_clients[a].y - g_clients[b].y) > VIEW_RADIUS) return false;
+
+	return true;
 }
 
 void do_move(int user_id, int direction)
@@ -179,45 +185,78 @@ void do_move(int user_id, int direction)
 	g_clients[user_id].x = x;
 	g_clients[user_id].y = y;
 
-
-	//for (int i = 0; i < MAX_USER; ++i) {
-	//	if ((ST_ACTIVE == g_clients[i].m_status) &&
-	//		(true == is_near_object(user_id, i)) &&
-	//		(i != user_id))
-	//		new_vl.push_back(i);
-	//}
-
-
-	for (auto &cl : g_clients) {
-		cl.m_cLock.lock();
-		if (ST_ACTIVE == cl.m_status)
-		{
-			//근처에 있다
-			if (true == is_near_object(cl.m_id, user_id))
-			{
-				send_move_packet(cl.m_id, user_id);
+	//복사해두고 쓴다. 근데 그 이후에 어긋나더라도 그건 감수해야한다. 지금은 이정도로 만족하자
+	g_clients[user_id].m_cLock.lock();
+	unordered_set<int> old_vl = g_clients[user_id].view_list;
+	g_clients[user_id].m_cLock.unlock();
 	
-				//viewlist에 없으면
-				if (true == is_near_id(user_id, cl.m_id))
-				{
-					send_move_packet(cl.m_id, user_id);
-					send_move_packet(user_id, cl.m_id);
-				}
+	unordered_set<int> new_vl;
+	for (auto &cl : g_clients)
+	{
+		if (ST_ACTIVE != cl.m_status) continue;
+		if (cl.m_id == user_id) continue;
+		if (true == is_near(cl.m_id, user_id))
+			new_vl.insert(cl.m_id);
+	}
+
+	//밑에서 view list로 알려주니까 나한테는 안 알려줌. 그래서 지금 먼저 나한테 이동을 알려줘야 함.
+	send_move_packet(user_id, user_id);
+
+	//시야에 새로 들어온 플레이어 
+	for (auto newPlayer : new_vl)
+	{
+		//old_vl에 없었는데 new_vl에 있다면 새로 생긴 것.
+		if (0 == old_vl.count(newPlayer))
+		{
+			send_enter_packet(user_id, newPlayer);
+
+			g_clients[newPlayer].m_cLock.lock();
+			if (0 == g_clients[newPlayer].view_list.count(user_id)) //멀티쓰레드 프로그램이니까, 다른 스레드에서 미리 시야 처리를 했을 수 있다.
+			{
+				g_clients[newPlayer].m_cLock.unlock();
+				send_enter_packet(newPlayer, user_id);
 			}
-			//근처에 없다 
 			else
 			{
-				//viewlist에 있으면
-				if (is_near_id(user_id, cl.m_id))
-				{
-					send_leave_packet(cl.m_id, user_id);
-					send_leave_packet(user_id, cl.m_id );
-					g_clients[cl.m_id].viewlist.erase(user_id);
-					g_clients[user_id].viewlist.erase(cl.m_id);
-				}
+				g_clients[newPlayer].m_cLock.unlock();
+				send_move_packet(newPlayer, user_id);
 			}
 		}
-		cl.m_cLock.unlock();
+		//새로 들어온 플레이어가 아니라 옛날에도 보였던 애라면 이동을 알려줌
+		else
+		{
+			//상대방이 이동하면서 시야에서 나를 뺐을 수 있다. 그러니까 상대방 viewlist를 확인하고 보내야 한다.
+			g_clients[newPlayer].m_cLock.lock();
+			if (0 != g_clients[newPlayer].view_list.count(user_id))
+			{
+				g_clients[newPlayer].m_cLock.unlock();
+				send_move_packet(newPlayer, user_id);
+			}
+			else
+			{
+				g_clients[newPlayer].m_cLock.unlock();
+				send_enter_packet(newPlayer, user_id);
+			}
+		}
+	}
+
+
+	//시야에서 벗어난 플레이어
+	for (auto oldPlayer : old_vl)
+	{
+		if (0 == new_vl.count(oldPlayer))
+		{
+			send_leave_packet(user_id, oldPlayer);
+
+			g_clients[oldPlayer].m_cLock.lock();
+			if (0 != g_clients[oldPlayer].view_list.count(user_id))
+			{
+				g_clients[oldPlayer].m_cLock.unlock();
+				send_leave_packet(oldPlayer, user_id);
+			}
+			else
+				g_clients[oldPlayer].m_cLock.unlock();
+		}
 	}
 }
 
@@ -228,24 +267,32 @@ void enter_game(int user_id, char name[])
 	strcpy_s(g_clients[user_id].m_name, name);
 	g_clients[user_id].m_name[MAX_ID_LEN] = NULL;
 	send_login_ok_packet(user_id);
+	g_clients[user_id].m_status = ST_ACTIVE;
+
+	g_clients[user_id].m_cLock.unlock();
 
 	for (int i = 0; i < MAX_USER; i++)
 	{
 		if (user_id == i) continue;
-		g_clients[i].m_cLock.lock(); //i와 user_id가 같아지는 경우 2중락으로 인한 오류 발생 (데드락)
-		if (ST_ACTIVE == g_clients[i].m_status)
+		//시야를 벗어났으면 처리하지 말아라 (입장 시 시야처리)
+		if (true == is_near(user_id, i))
 		{
-			if (i != user_id)		//나에게는 보내지 않는다.
+			//g_clients[i].m_cLock.lock(); //i와 user_id가 같아지는 경우 2중락으로 인한 오류 발생 (데드락)
+			//다른 곳에서 status를 바꿀 수 있지만, 실습에서 사용할정도의 복잡도만 유지해야 하기 때문에 일단 놔두기로 한다. 
+			//그래도 일단 컴파일러 문제랑 메모리 문제는 해결해야 하기 때문에 status 선언을 atomic으로 바꾼다. 
+			if (ST_ACTIVE == g_clients[i].m_status)
 			{
-				send_enter_packet(user_id, i);
-				send_enter_packet(i, user_id); //니가 나를 보면 나도 너를 본다
+				if (i != user_id)		//나에게는 보내지 않는다.
+				{
+					send_enter_packet(user_id, i);
+					send_enter_packet(i, user_id); //니가 나를 보면 나도 너를 본다
+				}
 			}
+			//g_clients[i].m_cLock.unlock();
 		}
-		g_clients[i].m_cLock.unlock();
 	}
 	
-	g_clients[user_id].m_status = ST_ACTIVE;
-	g_clients[user_id].m_cLock.unlock();
+
 }
 
 void process_packet(int user_id, char* buf)
@@ -278,29 +325,28 @@ void initialize_clients()
 		//이건 멀티쓰레드로 돌기 전에, 싱글쓰레드로 돌아가는 함수여서 lock을 거는 의미가 없음. 
 		g_clients[i].m_status = ST_FREE;
 		g_clients[i].m_id = i;
-		g_clients[i].viewlist.clear();
 	}
 }
 
 
 void disconnect(int user_id)
 {
+	send_leave_packet(user_id, user_id); //나는 나에게 보내기
+	
 	g_clients[user_id].m_cLock.lock();
 	g_clients[user_id].m_status = ST_ALLOCATED;	//처리 되기 전에 FREE하면 아직 떠나는 뒷처리가 안됐는데 새 접속을 받을 수 있음
 
-	send_leave_packet(user_id, user_id); //나는 나에게 보내기
 	closesocket(g_clients[user_id].m_socket);
 
 	for (auto &cl : g_clients)
 	{
 		if (cl.m_id == user_id) continue;
-		cl.m_cLock.lock();
+		//cl.m_cLock.lock();
 		if (ST_ACTIVE == cl.m_status)
 			send_leave_packet(cl.m_id, user_id);
-		cl.m_cLock.unlock();
+		//cl.m_cLock.unlock();
 	}
 	g_clients[user_id].m_status = ST_FREE;	//다 처리했으면 FREE
-	g_clients[user_id].viewlist.clear();
 	g_clients[user_id].m_cLock.unlock();
 }
 
@@ -420,37 +466,7 @@ void worker_Thread()
 				g_clients[user_id].x = rand() % WORLD_WIDTH;
 				g_clients[user_id].y = rand() % WORLD_HEIGHT;
 
-				for (auto &cl : g_clients) {
-					cl.m_cLock.lock();
-					if (ST_ACTIVE == cl.m_status)
-					{
-						//근처에 있다
-						if (true == is_near_object(cl.m_id, user_id))
-						{
-							send_move_packet(cl.m_id, user_id);
-
-							//viewlist에 없으면
-							if (false == is_near_id(user_id, cl.m_id))
-							{
-								send_near_packet(user_id, cl.m_id);
-								send_near_packet(cl.m_id, user_id);
-							}
-						}
-						//근처에 없다 
-						else
-						{
-							//viewlist에 있으면
-							if (is_near_id(user_id, cl.m_id))
-							{
-								send_leave_packet(cl.m_id, user_id);
-								send_leave_packet(user_id, cl.m_id);
-								g_clients[cl.m_id].viewlist.erase(user_id);
-								g_clients[user_id].viewlist.erase(cl.m_id);
-							}
-						}
-					}
-					cl.m_cLock.unlock();
-				}
+				g_clients[user_id].view_list.clear();
 
 				DWORD flags = 0;
 				WSARecv(clientSocket, &g_clients[user_id].m_recv_over.wsabuf, 1, NULL, &flags, &g_clients[user_id].m_recv_over.over, NULL);

@@ -5,6 +5,7 @@ constexpr int MAX_STR_LEN = 255;
 constexpr int MAX_PACKET_SIZE = 255;
 constexpr auto MAX_BUF_SIZE = 1024;
 constexpr auto MAX_USER = 10000;
+constexpr auto VIEW_RADIUS = 6;
 
 #define WORLD_WIDTH		400
 #define WORLD_HEIGHT	400

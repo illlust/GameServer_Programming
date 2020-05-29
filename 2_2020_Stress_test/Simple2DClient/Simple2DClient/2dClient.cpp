@@ -198,6 +198,7 @@ void ProcessPacket(char* ptr)
 		}
 	}
 	break;
+
 	case S2C_NEAR_PLAYER:
 	{
 		sc_packet_near *my_packet = reinterpret_cast<sc_packet_near *>(ptr);
