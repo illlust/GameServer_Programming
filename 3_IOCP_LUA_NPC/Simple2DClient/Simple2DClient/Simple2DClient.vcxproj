@@ -22,32 +22,32 @@
     <VCProjectVersion>15.0</VCProjectVersion>
     <ProjectGuid>{ADF2EA76-C52F-4D44-A1F9-652433BF696D}</ProjectGuid>
     <RootNamespace>Simple2DClient</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v141</PlatformToolset>
-    <CharacterSet>MultiByte</CharacterSet>
+    <PlatformToolset>v142</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v141</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
@@ -137,9 +137,16 @@
     <Import Project="..\packages\sfml_window.redist.2.5.1\build\native\sfml_window.redist.targets" Condition="Exists('..\packages\sfml_window.redist.2.5.1\build\native\sfml_window.redist.targets')" />
     <Import Project="..\packages\sfml_window.2.5.1\build\native\sfml_window.targets" Condition="Exists('..\packages\sfml_window.2.5.1\build\native\sfml_window.targets')" />
     <Import Project="..\packages\sfml_graphics.redist.2.5.1\build\native\sfml_graphics.redist.targets" Condition="Exists('..\packages\sfml_graphics.redist.2.5.1\build\native\sfml_graphics.redist.targets')" />
-    <Import Project="..\packages\sfml_graphics.2.5.1\build\native\sfml_graphics.targets" Condition="Exists('..\packages\sfml_graphics.2.5.1\build\native\sfml_graphics.targets')" />
     <Import Project="..\packages\sfml_network.redist.2.5.1\build\native\sfml_network.redist.targets" Condition="Exists('..\packages\sfml_network.redist.2.5.1\build\native\sfml_network.redist.targets')" />
     <Import Project="..\packages\sfml_network.2.5.1\build\native\sfml_network.targets" Condition="Exists('..\packages\sfml_network.2.5.1\build\native\sfml_network.targets')" />
+    <Import Project="..\packages\sfml-graphics.redist.2.4.2.0\build\native\sfml-graphics.redist.targets" Condition="Exists('..\packages\sfml-graphics.redist.2.4.2.0\build\native\sfml-graphics.redist.targets')" />
+    <Import Project="..\packages\sfml-system.redist.2.4.2.0\build\native\sfml-system.redist.targets" Condition="Exists('..\packages\sfml-system.redist.2.4.2.0\build\native\sfml-system.redist.targets')" />
+    <Import Project="..\packages\sfml-system.2.4.2.0\build\native\sfml-system.targets" Condition="Exists('..\packages\sfml-system.2.4.2.0\build\native\sfml-system.targets')" />
+    <Import Project="..\packages\sfml-window.redist.2.4.2.0\build\native\sfml-window.redist.targets" Condition="Exists('..\packages\sfml-window.redist.2.4.2.0\build\native\sfml-window.redist.targets')" />
+    <Import Project="..\packages\sfml-window.2.4.2.0\build\native\sfml-window.targets" Condition="Exists('..\packages\sfml-window.2.4.2.0\build\native\sfml-window.targets')" />
+    <Import Project="..\packages\sfml-network.redist.2.4.2.0\build\native\sfml-network.redist.targets" Condition="Exists('..\packages\sfml-network.redist.2.4.2.0\build\native\sfml-network.redist.targets')" />
+    <Import Project="..\packages\sfml-network.2.4.2.0\build\native\sfml-network.targets" Condition="Exists('..\packages\sfml-network.2.4.2.0\build\native\sfml-network.targets')" />
+    <Import Project="..\packages\sfml_graphics.2.5.1\build\native\sfml_graphics.targets" Condition="Exists('..\packages\sfml_graphics.2.5.1\build\native\sfml_graphics.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
@@ -150,8 +157,15 @@
     <Error Condition="!Exists('..\packages\sfml_window.redist.2.5.1\build\native\sfml_window.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml_window.redist.2.5.1\build\native\sfml_window.redist.targets'))" />
     <Error Condition="!Exists('..\packages\sfml_window.2.5.1\build\native\sfml_window.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml_window.2.5.1\build\native\sfml_window.targets'))" />
     <Error Condition="!Exists('..\packages\sfml_graphics.redist.2.5.1\build\native\sfml_graphics.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml_graphics.redist.2.5.1\build\native\sfml_graphics.redist.targets'))" />
-    <Error Condition="!Exists('..\packages\sfml_graphics.2.5.1\build\native\sfml_graphics.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml_graphics.2.5.1\build\native\sfml_graphics.targets'))" />
     <Error Condition="!Exists('..\packages\sfml_network.redist.2.5.1\build\native\sfml_network.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml_network.redist.2.5.1\build\native\sfml_network.redist.targets'))" />
     <Error Condition="!Exists('..\packages\sfml_network.2.5.1\build\native\sfml_network.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml_network.2.5.1\build\native\sfml_network.targets'))" />
+    <Error Condition="!Exists('..\packages\sfml-graphics.redist.2.4.2.0\build\native\sfml-graphics.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml-graphics.redist.2.4.2.0\build\native\sfml-graphics.redist.targets'))" />
+    <Error Condition="!Exists('..\packages\sfml-system.redist.2.4.2.0\build\native\sfml-system.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml-system.redist.2.4.2.0\build\native\sfml-system.redist.targets'))" />
+    <Error Condition="!Exists('..\packages\sfml-system.2.4.2.0\build\native\sfml-system.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml-system.2.4.2.0\build\native\sfml-system.targets'))" />
+    <Error Condition="!Exists('..\packages\sfml-window.redist.2.4.2.0\build\native\sfml-window.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml-window.redist.2.4.2.0\build\native\sfml-window.redist.targets'))" />
+    <Error Condition="!Exists('..\packages\sfml-window.2.4.2.0\build\native\sfml-window.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml-window.2.4.2.0\build\native\sfml-window.targets'))" />
+    <Error Condition="!Exists('..\packages\sfml-network.redist.2.4.2.0\build\native\sfml-network.redist.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml-network.redist.2.4.2.0\build\native\sfml-network.redist.targets'))" />
+    <Error Condition="!Exists('..\packages\sfml-network.2.4.2.0\build\native\sfml-network.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml-network.2.4.2.0\build\native\sfml-network.targets'))" />
+    <Error Condition="!Exists('..\packages\sfml_graphics.2.5.1\build\native\sfml_graphics.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\sfml_graphics.2.5.1\build\native\sfml_graphics.targets'))" />
   </Target>
 </Project>

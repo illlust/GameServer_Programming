@@ -6,16 +6,45 @@
 #include <mutex>
 #include <unordered_set>
 #include <atomic>
+#include <chrono>
+#include <queue>
 
 #include "protocol.h"
 #pragma comment (lib, "WS2_32.lib")
 #pragma comment (lib, "mswsock.lib")
+#pragma comment (lib, "lua53.lib")
+
+extern "C"
+{
+#include "lua.h"
+#include "luaconf.h"
+#include "lauxlib.h"
+#include "lualib.h"
+}
 
 using namespace std;
+using namespace chrono;
 
-enum ENUMOP { OP_RECV , OP_SEND, OP_ACCEPT };
 
-enum C_STATUS {ST_FREE, ST_ALLOCATED, ST_ACTIVE};
+enum ENUMOP { OP_RECV , OP_SEND, OP_ACCEPT, OP_RANDOM_MOVE , OP_PLAYER_MOVE};
+
+enum C_STATUS {ST_FREE, ST_ALLOCATED, ST_ACTIVE, ST_SLEEP};
+
+
+struct event_type
+{
+	int obj_id;
+	ENUMOP event_id; //힐링, 이동 ...
+	high_resolution_clock::time_point wakeup_time;
+	int target_id;
+
+	constexpr bool operator < (const event_type& left) const
+	{
+		return (wakeup_time > left.wakeup_time);
+	}
+};
+priority_queue<event_type> timer_queue;
+mutex timer_lock;
 
 //확장 overlapped 구조체
 struct EXOVER
@@ -27,6 +56,7 @@ struct EXOVER
 	union {
 		WSABUF			wsabuf;					//포인터 넣을 바에야 차라리 버퍼 자체를 넣자. 한군데 같이 두면 확장구조체를 재사용하면 전체가 재사용 된다.
 		SOCKET			c_socket;
+		int				p_id; //움직인 player의 id
 	};
 };
 
@@ -48,15 +78,27 @@ struct CLIENT
 
 	unsigned  m_move_time;
 
+	//high_resolution_clock::time_point m_last_move_time;
+
 	unordered_set<int> view_list; //순서가 상관없을 땐 unordered 쓰는게 더 속도가 빠르다 
+
+	lua_State* L;
+	mutex lua_l;
 };
 
 
-CLIENT g_clients[MAX_USER];		//클라이언트 동접만큼 저장하는 컨테이너 필요
+CLIENT g_clients[NPC_ID_START + NUM_NPC];		//클라이언트 동접만큼 저장하는 컨테이너 필요
 
 HANDLE g_iocp;					//iocp 핸들
 SOCKET listenSocket;			//서버 전체에 하나. 한번 정해지고 안바뀌니 데이터레이스 아님. 
 
+void add_timer(int obj_id, ENUMOP op_type, int duration)
+{
+	timer_lock.lock();
+	event_type ev{ obj_id, op_type,high_resolution_clock::now() + milliseconds(duration), 0 };
+	timer_queue.emplace(ev);
+	timer_lock.unlock();
+}
 
 //lock으로 보호받고있는 함수
 void send_packet(int user_id, void *p)
@@ -107,6 +149,16 @@ void send_move_packet(int user_id, int mover)
 	p.move_time = g_clients[mover].m_move_time;
 
 	send_packet(user_id, &p); //&p로 주지 않으면 복사되어서 날라가니까 성능에 안좋다. 
+}
+
+void send_chat_packet(int user_id, int chatter, char message[])
+{
+	sc_packet_chat p;
+	p.id = chatter;
+	p.size = sizeof(p);
+	p.type = S2C_CHAT;
+	strcpy_s(p.message, message);
+	send_packet(user_id, &p);
 }
 
 void send_enter_packet(int user_id, int o_id)
@@ -162,6 +214,20 @@ bool is_near(int a, int b)
 	return true;
 }
 
+bool is_player(int id)
+{
+	return id < NPC_ID_START;
+}
+
+//SLEEP에서 ACTIVE로 바꾼것에 성공한 경우만 add_timer. 한번만 하지 않으면 2배 속도로 이동
+void activate_npc(int id)
+{
+	g_clients[id].m_status = ST_ACTIVE;
+	C_STATUS old_status = ST_SLEEP;
+	if (true == atomic_compare_exchange_strong(&g_clients[id].m_status, &old_status, ST_ACTIVE)) 
+		add_timer(id, OP_RANDOM_MOVE, 1000);
+}
+
 void do_move(int user_id, int direction)
 {
 	int x = g_clients[user_id].x;
@@ -193,10 +259,20 @@ void do_move(int user_id, int direction)
 	unordered_set<int> new_vl;
 	for (auto &cl : g_clients)
 	{
-		if (ST_ACTIVE != cl.m_status) continue;
-		if (cl.m_id == user_id) continue;
-		if (true == is_near(cl.m_id, user_id))
-			new_vl.insert(cl.m_id);
+		if (false == is_near(cl.m_id, user_id)) continue;		//모든 클라 다 깨우는게 아니라 근처에 있는 애만 깨우기 
+		if (ST_SLEEP == cl.m_status) activate_npc(cl.m_id);		//잠들어 있던 npc면 active로 바꾸기
+		if (ST_ACTIVE != cl.m_status) continue;					//그 외 상태는 빠져나가기
+		if (cl.m_id == user_id) continue;						//나 자신이면 빠져나가기
+		
+		//ncp라면 플레이어가 이동했다고 OP_PLAYER_MOVE를 보내준다. 
+		if (false == is_player(cl.m_id))
+		{
+			EXOVER* over = new EXOVER();
+			over->p_id = user_id;
+			over->op = OP_PLAYER_MOVE;
+			PostQueuedCompletionStatus(g_iocp, 1, cl.m_id, &over->over);
+		}
+		new_vl.insert(cl.m_id);									//새로운 view list에 삽입
 	}
 
 	//밑에서 view list로 알려주니까 나한테는 안 알려줌. 그래서 지금 먼저 나한테 이동을 알려줘야 함.
@@ -209,6 +285,9 @@ void do_move(int user_id, int direction)
 		if (0 == old_vl.count(newPlayer))
 		{
 			send_enter_packet(user_id, newPlayer);
+
+			if (false == is_player(newPlayer))
+				continue;
 
 			g_clients[newPlayer].m_cLock.lock();
 			if (0 == g_clients[newPlayer].view_list.count(user_id)) //멀티쓰레드 프로그램이니까, 다른 스레드에서 미리 시야 처리를 했을 수 있다.
@@ -225,6 +304,8 @@ void do_move(int user_id, int direction)
 		//새로 들어온 플레이어가 아니라 옛날에도 보였던 애라면 이동을 알려줌
 		else
 		{
+			if (false == is_player(newPlayer)) continue;
+
 			//상대방이 이동하면서 시야에서 나를 뺐을 수 있다. 그러니까 상대방 viewlist를 확인하고 보내야 한다.
 			g_clients[newPlayer].m_cLock.lock();
 			if (0 != g_clients[newPlayer].view_list.count(user_id))
@@ -244,10 +325,13 @@ void do_move(int user_id, int direction)
 	//시야에서 벗어난 플레이어
 	for (auto oldPlayer : old_vl)
 	{
+
 		if (0 == new_vl.count(oldPlayer))
 		{
 			send_leave_packet(user_id, oldPlayer);
 
+			if (false == is_player(oldPlayer)) continue;
+	
 			g_clients[oldPlayer].m_cLock.lock();
 			if (0 != g_clients[oldPlayer].view_list.count(user_id))
 			{
@@ -260,6 +344,60 @@ void do_move(int user_id, int direction)
 	}
 }
 
+void random_move_npc(int npc_id)
+{
+	int x = g_clients[npc_id].x;
+	int y = g_clients[npc_id].y;
+
+	switch (rand() % 4)
+	{
+	case 0:
+		if (x < WORLD_WIDTH - 1) x++; break;
+	case 1:
+		if (x > 0) x--; break;
+	case 2:
+		if (y < WORLD_HEIGHT - 1) y++; break;
+	case 3:
+		if (y > 0 ) y--; break;
+	}
+
+	g_clients[npc_id].x = x;
+	g_clients[npc_id].y = y;
+
+	for (int i = 0; i < NPC_ID_START; ++i)
+	{
+		if (g_clients[i].m_status != ST_ACTIVE) continue;
+		if (true == is_near(i, npc_id))
+		{
+			g_clients[i].m_cLock.lock();
+			if (0 != g_clients[i].view_list.count(npc_id))
+			{
+				g_clients[i].m_cLock.unlock();
+				send_move_packet(i, npc_id);
+			}
+			else
+			{
+				g_clients[i].m_cLock.unlock();
+				send_enter_packet(i, npc_id);
+			}
+		}
+		else
+		{
+			g_clients[i].m_cLock.lock();
+			if (0 != g_clients[i].view_list.count(npc_id))
+			{
+				g_clients[i].m_cLock.unlock();
+				send_leave_packet(i, npc_id);
+			}
+			else
+				g_clients[i].m_cLock.unlock();
+		}
+	}
+
+}
+
+
+
 void enter_game(int user_id, char name[])
 {
 	g_clients[user_id].m_cLock.lock();
@@ -271,28 +409,29 @@ void enter_game(int user_id, char name[])
 
 	g_clients[user_id].m_cLock.unlock();
 
-	for (int i = 0; i < MAX_USER; i++)
+	for (auto& cl : g_clients)
 	{
+		int i = cl.m_id;
 		if (user_id == i) continue;
 		//시야를 벗어났으면 처리하지 말아라 (입장 시 시야처리)
 		if (true == is_near(user_id, i))
 		{
+			//npc가 자고있다면 깨우기
+			if (ST_SLEEP == g_clients[i].m_status)
+				activate_npc(i);
+		
 			//g_clients[i].m_cLock.lock(); //i와 user_id가 같아지는 경우 2중락으로 인한 오류 발생 (데드락)
 			//다른 곳에서 status를 바꿀 수 있지만, 실습에서 사용할정도의 복잡도만 유지해야 하기 때문에 일단 놔두기로 한다. 
 			//그래도 일단 컴파일러 문제랑 메모리 문제는 해결해야 하기 때문에 status 선언을 atomic으로 바꾼다. 
 			if (ST_ACTIVE == g_clients[i].m_status)
 			{
-				if (i != user_id)		//나에게는 보내지 않는다.
-				{
-					send_enter_packet(user_id, i);
+				send_enter_packet(user_id, i);
+				if(true == is_player(i)) //플레이어인 경우만 send. 안그러면 소켓이 없어서 에러남
 					send_enter_packet(i, user_id); //니가 나를 보면 나도 너를 본다
-				}
 			}
 			//g_clients[i].m_cLock.unlock();
 		}
 	}
-	
-
 }
 
 void process_packet(int user_id, char* buf)
@@ -338,8 +477,9 @@ void disconnect(int user_id)
 
 	closesocket(g_clients[user_id].m_socket);
 
-	for (auto &cl : g_clients)
+	for (int i = 0; i < NPC_ID_START; ++i)
 	{
+		CLIENT& cl = g_clients[i];
 		if (cl.m_id == user_id) continue;
 		//cl.m_cLock.lock();
 		if (ST_ACTIVE == cl.m_status)
@@ -480,16 +620,172 @@ void worker_Thread()
 
 		}
 			break;
+
+		case OP_RANDOM_MOVE:
+		{
+			random_move_npc(user_id);
+			
+			bool keep_alive = false;
+
+			//active인 플레이어가 주변에 있으면 계속 깨워두기
+			for(int i=0; i<NPC_ID_START; ++i)
+				if(true == is_near(user_id, i))
+					if (ST_ACTIVE == g_clients[i].m_status)
+					{
+						keep_alive = true;
+						break;
+					}
+			if (true == keep_alive) add_timer(user_id, OP_RANDOM_MOVE, 1000);
+			else g_clients[user_id].m_status = ST_SLEEP; //주위에 이제 아무도 없으면 SLEEP으로 멈춰두기
+
+			delete exover;
+		}
+			break;
+
+		case OP_PLAYER_MOVE:
+		{
+			g_clients[user_id].lua_l.lock();
+			lua_State* L = g_clients[user_id].L;
+			lua_getglobal(L, "event_player_move");
+			lua_pushnumber(L, exover->p_id);//누가 움직였는지 받기 위해 exover에 union을 이용한다.
+			int err = lua_pcall(L, 1, 0, 0);
+			g_clients[user_id].lua_l.unlock();
+			delete exover;
+		}
+			break;
+		default:
+			cout << "unknown operation in worker_thread\n";
+			while (true);
 		}
 	}
 
 }
+
+int API_SendMessage(lua_State* L)
+{
+	int my_id = (int)lua_tointeger(L, -3);
+	int user_id = (int)lua_tointeger(L, -2);
+	char* message = (char*)lua_tostring(L, -1);
+
+	send_chat_packet(user_id, my_id, message);
+	lua_pop(L, 3);
+	return 0; //리턴 값 개수 0개
+}
+
+int API_get_x(lua_State* L)
+{
+	int obj_id = (int)lua_tointeger(L, -1);
+	lua_pop(L, 2);
+	int x = g_clients[obj_id].x;
+	lua_pushnumber(L, x);
+	return 1;
+}
+
+int API_get_y(lua_State* L)
+{
+	int obj_id = (int)lua_tointeger(L, -1);
+	lua_pop(L, 2);
+	int y = g_clients[obj_id].y;
+	lua_pushnumber(L, y);
+	return 1;
+}
+
+void init_npc()
+{
+	for (int i = NPC_ID_START; i < NUM_NPC; ++i)
+	{
+		g_clients[i].m_socket = 0;
+		g_clients[i].m_id = i;
+		sprintf_s(g_clients[i].m_name, "NPC%d", i);
+		g_clients[i].m_status = ST_SLEEP;
+		g_clients[i].x = rand() % WORLD_WIDTH;
+		g_clients[i].y = rand() % WORLD_HEIGHT;
+		//g_clients[i].m_last_move_time = high_resolution_clock::now();
+		//add_timer(i, OP_RANDOM_MOVE, 1000); 그냥 움직이는게 아니라 플레이어가 움직였을때 시야에 들어오면 깨워야 함
+
+		lua_State *L = g_clients[i].L = luaL_newstate();
+		luaL_openlibs(L);
+		luaL_loadfile(L, "NPC.LUA");
+		lua_pcall(L, 0, 0, 0);
+		lua_getglobal(L, "set_uid");
+		lua_pushnumber(L, i);
+		lua_pcall(L, 1, 0, 0);
+		lua_pop(L, 1);
+
+		//API 등록
+		lua_register(L, "API_SendMessage", API_SendMessage);
+		lua_register(L, "API_get_x", API_get_x);
+		lua_register(L, "API_get_y", API_get_y);
+	}
+}
+
+//void do_ai()
+//{
+//	while (true)
+//	{
+//		auto ai_start_time = high_resolution_clock::now();
+//		for (int i = NPC_ID_START; i < NPC_ID_START + NUM_NPC; ++i)
+//		{
+//			if (high_resolution_clock::now() - g_clients[i].m_last_move_time > 1s)
+//			{
+//				random_move_npc(i);
+//				g_clients[i].m_last_move_time = high_resolution_clock::now();
+//			}
+//		}
+//		auto ai_time = high_resolution_clock::now() - ai_start_time;
+//		cout << "AI exec Time = " << duration_cast<milliseconds>(ai_time).count() << "ms \n";
+//	}
+//}
+
+void do_timer()
+{
+	while (true)
+	{
+		this_thread::sleep_for(1ms); //Sleep(1);
+		while (true)
+		{
+			timer_lock.lock();
+			if (timer_queue.empty() == true)
+			{
+				timer_lock.unlock();
+				break;
+			}
+			if (timer_queue.top().wakeup_time > high_resolution_clock::now())
+			{
+				timer_lock.unlock();
+				break;
+			}
+			event_type ev = timer_queue.top();
+			timer_queue.pop();
+			timer_lock.unlock();
+
+			switch (ev.event_id)
+			{
+			case OP_RANDOM_MOVE:
+				EXOVER* over = new EXOVER();
+				over->op = ev.event_id;
+				PostQueuedCompletionStatus(g_iocp, 1, ev.obj_id, &over->over);
+				//random_move_npc(ev.obj_id);
+				//add_timer(ev.obj_id, ev.event_id, 1000);
+				break;
+			}
+		}
+	}
+}
+
+
+
 
 void main()
 {
 	//네트워크 초기화
 	WSADATA WSAData;
 	WSAStartup(MAKEWORD(2, 2), &WSAData);
+
+	cout << "npc initialization start \n";
+	init_npc();
+	cout << "npc initialization finished \n";
+
 
 	//맨 뒤에 flag를 overlapped로 꼭 줘야 제대로 동작
 	listenSocket = WSASocketW(AF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
@@ -527,6 +823,9 @@ void main()
 	for (int i = 0; i < 5; ++i)
 		worker_threads.emplace_back(worker_Thread);
 
+	thread timer_thread{ do_timer };
+
 	//메인 종료 전 모든 스레드 종료 기다리기
 	for (auto &th : worker_threads) th.join();
+	timer_thread.join();
 }

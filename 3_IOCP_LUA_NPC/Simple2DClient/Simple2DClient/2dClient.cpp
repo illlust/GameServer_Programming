@@ -9,6 +9,8 @@ using namespace chrono;
 
 #include "..\..\IOCPGameServer\IOCPGameServer\protocol.h"
 
+//#pragma comment(lib, "sfml_network.lib")
+
 sf::TcpSocket g_socket;
 
 constexpr auto SCREEN_WIDTH = 16;
@@ -19,8 +21,9 @@ constexpr auto WINDOW_WIDTH = TILE_WIDTH * SCREEN_WIDTH / 2 + 10;   // size of w
 constexpr auto WINDOW_HEIGHT = TILE_WIDTH * SCREEN_WIDTH / 2 + 10;
 constexpr auto BUF_SIZE = 200;
 
+
 // 추후 확장용.
-int NPC_ID_START = 10000;
+//int NPC_ID_START = 10000;
 
 int g_left_x;
 int g_top_y;
@@ -82,7 +85,7 @@ public:
 		m_name.setPosition(rx - 10, ry - 10);
 		g_window->draw(m_name);
 		if (high_resolution_clock::now() < m_time_out) {
-			m_text.setPosition(rx - 10, ry - 10);
+			m_text.setPosition(rx - 10, ry + 15);
 			g_window->draw(m_text);
 		}
 	}
@@ -208,10 +211,21 @@ void ProcessPacket(char* ptr)
 			avatar.move(my_packet->x, my_packet->y);
 			avatar.show();
 		}
-		/*else if (id < MAX_USER) {
-			players[id].move(my_packet->x, my_packet->y);
-			players[id].show();
-		}*/
+		//else if (id < MAX_USER) {
+		//	players[id].move(my_packet->x, my_packet->y);
+		//	players[id].show();
+		//}
+	}
+	break;
+
+	case S2C_CHAT:
+	{	
+		sc_packet_chat* my_packet = reinterpret_cast<sc_packet_chat*>(ptr);
+		int o_id = my_packet->id;
+		if (0 != npcs.count(o_id))
+		{
+			npcs[o_id].add_chat(my_packet->message);
+		}
 	}
 	break;
 	
