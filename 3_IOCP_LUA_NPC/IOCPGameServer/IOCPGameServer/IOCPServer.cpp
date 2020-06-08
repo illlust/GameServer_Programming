@@ -222,7 +222,7 @@ bool is_player(int id)
 //SLEEP에서 ACTIVE로 바꾼것에 성공한 경우만 add_timer. 한번만 하지 않으면 2배 속도로 이동
 void activate_npc(int id)
 {
-	g_clients[id].m_status = ST_ACTIVE;
+	//g_clients[id].m_status = ST_ACTIVE;
 	C_STATUS old_status = ST_SLEEP;
 	if (true == atomic_compare_exchange_strong(&g_clients[id].m_status, &old_status, ST_ACTIVE)) 
 		add_timer(id, OP_RANDOM_MOVE, 1000);
@@ -260,7 +260,8 @@ void do_move(int user_id, int direction)
 	for (auto &cl : g_clients)
 	{
 		if (false == is_near(cl.m_id, user_id)) continue;		//모든 클라 다 깨우는게 아니라 근처에 있는 애만 깨우기 
-		if (ST_SLEEP == cl.m_status) activate_npc(cl.m_id);		//잠들어 있던 npc면 active로 바꾸기
+		if (ST_SLEEP == cl.m_status) 
+			activate_npc(cl.m_id);		//잠들어 있던 npc면 active로 바꾸기
 		if (ST_ACTIVE != cl.m_status) continue;					//그 외 상태는 빠져나가기
 		if (cl.m_id == user_id) continue;						//나 자신이면 빠져나가기
 		
@@ -692,7 +693,7 @@ int API_get_y(lua_State* L)
 
 void init_npc()
 {
-	for (int i = NPC_ID_START; i < NUM_NPC; ++i)
+	for (int i = NPC_ID_START; i < NPC_ID_START + NUM_NPC; ++i)
 	{
 		g_clients[i].m_socket = 0;
 		g_clients[i].m_id = i;
