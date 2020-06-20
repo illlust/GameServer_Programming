@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include <WS2tcpip.h>
 #include <MSWSock.h>
@@ -28,7 +29,7 @@ using namespace std;
 using namespace chrono;
 
 
-enum ENUMOP { OP_RECV , OP_SEND, OP_ACCEPT, OP_RANDOM_MOVE , OP_PLAYER_MOVE, OP_PLAYER_HP_HEAL};
+enum ENUMOP { OP_RECV , OP_SEND, OP_ACCEPT, OP_RANDOM_MOVE , OP_PLAYER_MOVE, OP_PLAYER_HP_HEAL, OP_NPC_RESPON};
 
 enum C_STATUS {ST_FREE, ST_ALLOCATED, ST_ACTIVE, ST_SLEEP};
 
@@ -82,7 +83,12 @@ struct CLIENT
 	int exp;
 	short hp;
 
+	//npc의 타입
+	bool npcCharacterType; //0-peace / 1-war
+	bool npcMoveType; //0-고정 / 1-로밍
+
 	unsigned  m_move_time;
+	unsigned  m_attack_time;
 
 	//high_resolution_clock::time_point m_last_move_time;
 
@@ -104,12 +110,21 @@ struct DATABASE
 	short HP;
 };
 
+struct MAP
+{
+	GRID_TYPE type; //0-땅바닥, 3-장애물, 10-몬스터, 11-플레이어, 12-다른플레이어, 
+};
+
+MAP g_Map[WORLD_HEIGHT][WORLD_WIDTH];
+
 CLIENT g_clients[NPC_ID_START + NUM_NPC];		//클라이언트 동접만큼 저장하는 컨테이너 필요
 
 list<DATABASE> g_dbData;
 
 HANDLE g_iocp;					//iocp 핸들
 SOCKET listenSocket;			//서버 전체에 하나. 한번 정해지고 안바뀌니 데이터레이스 아님. 
+
+int g_totalUserCount = 5;
 
 void LoadData() {
 	SQLHENV henv;
@@ -364,12 +379,13 @@ void send_move_packet(int user_id, int mover)
 	send_packet(user_id, &p); //&p로 주지 않으면 복사되어서 날라가니까 성능에 안좋다. 
 }
 
-void send_chat_packet(int user_id, int chatter, char message[])
+void send_chat_packet(int user_id, int chatter, char message[], int chatType)
 {
 	sc_packet_chat p;
 	p.id = chatter;
 	p.size = sizeof(p);
 	p.type = S2C_CHAT;
+	p.chatType = chatType;
 	strcpy_s(p.mess, message);
 	send_packet(user_id, &p);
 }
@@ -382,8 +398,11 @@ void send_enter_packet(int user_id, int o_id)
 	p.type = S2C_ENTER;
 	p.x = g_clients[o_id].x;
 	p.y = g_clients[o_id].y;
+	p.npcCharacterType = g_clients[o_id].npcCharacterType;
+	p.npcMoveType = g_clients[o_id].npcMoveType;
 	strcpy_s(p.name, g_clients[o_id].m_name);
 	p.o_type = O_PLAYER;
+	
 
 	g_clients[user_id].m_cLock.lock();
 	g_clients[user_id].view_list.insert(o_id);
@@ -474,6 +493,105 @@ void activate_npc(int id)
 //	lua_pop(L, 1);
 // }
 
+void isPlayerLevelUp(int user_id)
+{
+	if (g_clients[user_id].exp >= (int)(100 * pow(2, (g_clients[user_id].level - 1))))
+	{
+		g_clients[user_id].exp = 0;
+		g_clients[user_id].hp = 100;
+		g_clients[user_id].level += 1;
+
+		//send_stat_change_packet(user_id, user_id);
+		//
+		//g_clients[user_id].m_cLock.lock();
+		//unordered_set<int> vl = g_clients[user_id].view_list;
+		//g_clients[user_id].m_cLock.unlock();
+		//
+		//for (auto vlPlayer : vl)
+		//{
+		//	send_stat_change_packet(vlPlayer, user_id);
+		//}
+	}
+}
+
+
+void isNPCDie(int user_id, int npc_id)
+{
+	if (g_clients[npc_id].hp <= 0)
+	{
+		char mess[100];
+		if (g_clients[npc_id].npcCharacterType == NPC_WAR || g_clients[npc_id].npcMoveType == NPC_RANDOM_MOVE)
+		{
+			g_clients[user_id].exp += g_clients[npc_id].level * 5 * 2;
+			sprintf_s(mess, "**%s** EXP (+%d).", g_clients[user_id].m_name, g_clients[npc_id].level * 5 * 2);
+		}
+		else
+		{
+			g_clients[user_id].exp += g_clients[npc_id].level * 5;
+			sprintf_s(mess, "**%s** EXP (+%d).", g_clients[user_id].m_name, g_clients[npc_id].level * 5);
+		}
+
+		isPlayerLevelUp(user_id);
+		g_clients[npc_id].m_status = ST_ALLOCATED;
+		while (true)
+		{
+			int x = rand() % WORLD_WIDTH;
+			int y = rand() % WORLD_HEIGHT;
+
+			if (g_Map[y][x].type == eBLANK)
+			{
+				g_clients[npc_id].x = x;
+				g_clients[npc_id].y = y;
+				break;
+			}
+		}
+
+		//for (int i = 0; i < g_totalUserCount; ++i)
+		//	send_leave_packet(i, npc_id);
+
+		for (int i = 0; i < g_totalUserCount; ++i)
+			send_chat_packet(i, user_id, mess, 1);
+
+		send_stat_change_packet(user_id, user_id);
+		for (auto vl : g_clients[user_id].view_list)
+			send_stat_change_packet(vl, user_id);
+
+		add_timer(npc_id, OP_NPC_RESPON, 1000);
+	}
+}
+
+void do_attack(int user_id)
+{
+	g_clients[user_id].m_cLock.lock();
+	auto vl = g_clients[user_id].view_list;
+	g_clients[user_id].m_cLock.unlock();
+
+	for (auto npc : vl)
+	{
+		if (g_clients[npc].m_id < NPC_ID_START)
+			continue;
+
+		if ((g_clients[npc].x == g_clients[user_id].x && g_clients[npc].y == g_clients[user_id].y - 1) ||
+			(g_clients[npc].x == g_clients[user_id].x && g_clients[npc].y == g_clients[user_id].y + 1) ||
+			(g_clients[npc].x == g_clients[user_id].x - 1 && g_clients[npc].y == g_clients[user_id].y) ||
+			(g_clients[npc].x == g_clients[user_id].x + 1 && g_clients[npc].y == g_clients[user_id].y))
+		{
+			g_clients[npc].hp -= 10 * g_clients[user_id].level;
+			if(g_clients[npc].hp < 0) g_clients[npc].hp = 0;
+			isNPCDie(user_id, npc);
+
+			char mess[100];
+			sprintf_s(mess, "%s -> attack -> NPC %d (-%d).", g_clients[user_id].m_name, npc, g_clients[user_id].level * 10);
+
+			for (int i=0; i< g_totalUserCount; ++i)
+			{
+				send_stat_change_packet(i, npc);
+				send_chat_packet(i, user_id, mess, 1);
+			}
+		}
+	}
+}
+
 void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _Directy = 0)
 {
 	int x = g_clients[user_id].x;
@@ -484,13 +602,41 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 		switch (direction)
 		{
 		case D_UP:
-			if (y > 0)	y--;	break;
+			if (g_Map[y-1][x].type == eBLANK)
+			{
+				if (y > 0)
+				{
+					y--;
+				}
+			}
+			break;
 		case D_DOWN:
-			if (y < WORLD_HEIGHT - 1)	y++;	break;
+			if (g_Map[y+1][x].type == eBLANK)
+			{
+				if (y < WORLD_HEIGHT - 1)
+				{
+					y++;
+				}
+			}
+			break;
 		case D_LEFT:
-			if (x > 0)	x--;	break;
+			if (g_Map[y][x-1].type == eBLANK)
+			{
+				if (x > 0)
+				{
+					x--;
+				}
+			}
+			break;
 		case D_RIGHT:
-			if (x < WORLD_WIDTH - 1)	x++;	break;
+			if (g_Map[y][x+1].type == eBLANK)
+			{
+				if (x < WORLD_WIDTH - 1)
+				{
+					x++;
+				}
+			}
+			break;
 		default:
 			cout << "unknown direction from client move packet \n";
 			DebugBreak();
@@ -600,7 +746,6 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 	}
 }
 
-
 void isPlayerDie(int user_id)
 {
 	if (g_clients[user_id].hp <= 0)
@@ -613,26 +758,6 @@ void isPlayerDie(int user_id)
 	}
 }
 
-void isPlayerLevelUp(int user_id)
-{
-	if (g_clients[user_id].exp >= g_clients[user_id].level*g_clients[user_id].level * 100)
-	{
-		g_clients[user_id].exp = 0;
-		g_clients[user_id].hp = 100;
-
-		send_stat_change_packet(user_id, user_id);
-
-		g_clients[user_id].m_cLock.lock();
-		unordered_set<int> vl = g_clients[user_id].view_list;
-		g_clients[user_id].m_cLock.unlock();
-
-		for (auto vlPlayer : vl)
-		{
-			send_stat_change_packet(vlPlayer, user_id);
-		}
-	}
-}
-
 void random_move_npc(int npc_id)
 {
 	int x = g_clients[npc_id].x;
@@ -641,33 +766,61 @@ void random_move_npc(int npc_id)
 	switch (rand() % 4)
 	{
 	case 0:
-		if (x < WORLD_WIDTH - 1) x++; break;
+		if (g_Map[y][x+1].type == eBLANK)
+		{
+			if (x < WORLD_WIDTH - 1)
+			{
+				x++;
+			}
+		}
+		break;
 	case 1:
-		if (x > 0) x--; break;
+		if (g_Map[y][x-1].type == eBLANK)
+		{
+			if (x > 0)
+			{
+				x--;
+			}
+		}
+		break;
 	case 2:
-		if (y < WORLD_HEIGHT - 1) y++; break;
+		if (g_Map[y+1][x].type == eBLANK)
+		{
+			if (y < WORLD_HEIGHT - 1)
+			{
+				y++;
+			}
+		}
+		break;
 	case 3:
-		if (y > 0 ) y--; break;
+		if (g_Map[y-1][x].type == eBLANK)
+		{
+			if (y > 0)
+			{
+				y--;
+			}
+		}
+		break;
 	}
 
 	g_clients[npc_id].x = x;
 	g_clients[npc_id].y = y;
 	g_clients[npc_id].moveCount++;
 
-	if (g_clients[npc_id].moveCount >= 3)
-	{
-		g_clients[npc_id].lua_l.lock();
-		lua_State* L = g_clients[npc_id].L;
-		lua_getglobal(L, "event_say_bye");
-		lua_pushnumber(L, npc_id);//누가 움직였는지 받기 위해 exover에 union을 이용한다.
-		int err = lua_pcall(L, 1, 0, 0);
-		g_clients[npc_id].lua_l.unlock();
-
-		//g_clients[npc_id].moveCount = 0;
-		g_clients[npc_id].m_status = ST_SLEEP;
-		//return;
-	}
-	else
+	//if (g_clients[npc_id].moveCount >= 3)
+	//{
+	//	g_clients[npc_id].lua_l.lock();
+	//	lua_State* L = g_clients[npc_id].L;
+	//	lua_getglobal(L, "event_say_bye");
+	//	lua_pushnumber(L, npc_id);//누가 움직였는지 받기 위해 exover에 union을 이용한다.
+	//	int err = lua_pcall(L, 1, 0, 0);
+	//	g_clients[npc_id].lua_l.unlock();
+	//
+	//	//g_clients[npc_id].moveCount = 0;
+	//	g_clients[npc_id].m_status = ST_SLEEP;
+	//	//return;
+	//}
+	//else
 		add_timer(npc_id, OP_RANDOM_MOVE, 1000);
 
 	for (int i = 0; i < NPC_ID_START; ++i)
@@ -784,6 +937,12 @@ void process_packet(int user_id, char* buf)
 	{	cs_packet_move *packet = reinterpret_cast<cs_packet_move*>(buf);
 		g_clients[user_id].m_move_time = packet->move_time;
 		do_move(user_id, packet->direction, false);
+		break;
+	}
+	case C2S_ATTACK:
+	{
+		cs_packet_attack *packet = reinterpret_cast<cs_packet_attack*>(buf);
+		do_attack(user_id);
 		break;
 	}
 	default:
@@ -983,6 +1142,15 @@ void worker_Thread()
 
 		case OP_PLAYER_MOVE:
 		{
+			if (is_near(exover->p_id, user_id))
+			{
+				//플레이어가 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
+				if (g_clients[user_id].npcCharacterType == NPC_WAR)
+				{
+
+				}
+			}
+
 			g_clients[user_id].lua_l.lock();
 			lua_State* L = g_clients[user_id].L;
 			lua_getglobal(L, "event_player_move");
@@ -1012,6 +1180,16 @@ void worker_Thread()
 			}
 		}
 		break;
+		case OP_NPC_RESPON:
+		{
+			g_clients[user_id].hp = 100;
+			if (g_clients[user_id].npcMoveType == 1)
+				add_timer(user_id, OP_RANDOM_MOVE, 1000); //그냥 움직이는게 아니라 플레이어가 움직였을때 시야에 들어오면 깨워야 함
+			
+			g_clients[user_id].m_status = ST_SLEEP;
+
+		}
+			break;
 		default:
 			cout << "unknown operation in worker_thread\n";
 			while (true);
@@ -1026,9 +1204,12 @@ int API_SendMessageHELLO(lua_State* L)
 	int user_id = (int)lua_tointeger(L, -2);
 	char* message = (char*)lua_tostring(L, -1);
 
-	send_chat_packet(user_id, my_id, message);
+	send_chat_packet(user_id, my_id, message,0);
 	g_clients[my_id].moveCount = 0;
-	add_timer(my_id, OP_RANDOM_MOVE, 1000);
+
+	//원래 고정이었던 애들만 타이머 추가
+	//if (g_clients[my_id].npcMoveType = NPC_PEACE && g_clients[my_id].npcCharacterType == NPC_RANDOM_MOVE)
+	//	add_timer(my_id, OP_RANDOM_MOVE, 1000);
 
 	lua_pop(L, 3);
 	return 0; //리턴 값 개수 0개
@@ -1040,7 +1221,7 @@ int API_SendMessageBYE(lua_State* L)
 	int user_id = (int)lua_tointeger(L, -2);
 	char* message = (char*)lua_tostring(L, -1);
 
-	send_chat_packet(user_id, my_id, message);
+	send_chat_packet(user_id, my_id, message,0);
 
 	lua_pop(L, 3);
 	return 0; //리턴 값 개수 0개
@@ -1072,11 +1253,31 @@ void init_npc()
 		g_clients[i].m_id = i;
 		sprintf_s(g_clients[i].m_name, "NPC%d", i);
 		g_clients[i].m_status = ST_SLEEP;
-		g_clients[i].x = rand() % WORLD_WIDTH;
-		g_clients[i].y = rand() % WORLD_HEIGHT;
+
+		while (true)
+		{
+			int x = rand() % WORLD_WIDTH;
+			int y = rand() % WORLD_HEIGHT;
+
+			if (g_Map[y][x].type == eBLANK)
+			{
+				g_clients[i].x = x;
+				g_clients[i].y = y;
+				break;
+			}
+		}
+
+		g_clients[i].level = rand() % 5 + 1;
+		g_clients[i].hp = 100;
+
 		g_clients[i].moveCount = 0;
+		g_clients[i].npcCharacterType = rand() % 2;
+		g_clients[i].npcMoveType = rand() % 2;
+
 		//g_clients[i].m_last_move_time = high_resolution_clock::now();
-		//add_timer(i, OP_RANDOM_MOVE, 1000); 그냥 움직이는게 아니라 플레이어가 움직였을때 시야에 들어오면 깨워야 함
+		if(g_clients[i].npcMoveType == 1)
+			add_timer(i, OP_RANDOM_MOVE, 1000); //그냥 움직이는게 아니라 플레이어가 움직였을때 시야에 들어오면 깨워야 함
+
 
 		lua_State *L = g_clients[i].L = luaL_newstate();
 		luaL_openlibs(L);
@@ -1136,19 +1337,62 @@ void do_timer()
 				PostQueuedCompletionStatus(g_iocp, 1, ev.obj_id, &over->over);
 			}
 			break;
+			case OP_NPC_RESPON:
+			{
+				EXOVER* over = new EXOVER();
+				over->op = ev.event_id;
+				PostQueuedCompletionStatus(g_iocp, 1, ev.obj_id, &over->over);
+			}
+			break;
 			}
 		}
 	}
 }
 
 
-
+void init_map()
+{
+	char data;
+	FILE* fp = fopen("mapData.txt", "rb");
+	
+	int count = 0;
+	
+	while (fscanf(fp, "%c", &data) != EOF) {
+		//printf("%c", data);
+		switch (data)
+		{
+		case '0':
+			g_Map[count / 800][count % 800].type = eBLANK;
+			count++;
+			break;
+		case '3':
+			g_Map[count / 800][count % 800].type = eBLOCKED;
+			count++;
+			break;
+		default:
+			break;
+		}
+	}
+	fclose(fp);
+	
+	//for (int i = 0; i < WORLD_HEIGHT; ++i)
+	//{
+	//	for (int j = 0; j < WORLD_WIDTH; ++j)
+	//	{
+	//		g_Map[i][j].type = eBLANK;
+	//	}
+	//}
+}
 
 void main()
 {
 	//네트워크 초기화
 	WSADATA WSAData;
 	WSAStartup(MAKEWORD(2, 2), &WSAData);
+	
+	cout << "map initialization start \n";
+	init_map();
+	cout << "map initialization finished \n";
 
 	cout << "npc initialization start \n";
 	init_npc();

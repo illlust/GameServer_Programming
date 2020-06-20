@@ -10,10 +10,10 @@ constexpr int MAX_STR_LEN = 80;
 constexpr int MAX_PACKET_SIZE = 255;
 constexpr auto MAX_BUF_SIZE = 1024;
 constexpr auto MAX_USER = NPC_ID_START;
-constexpr auto VIEW_RADIUS = 6;
+constexpr auto VIEW_RADIUS = 7;
 
-#define WORLD_WIDTH		400
-#define WORLD_HEIGHT	400
+#define WORLD_WIDTH		800
+#define WORLD_HEIGHT	800
 
 #define MAX_STR_SIZE  100
 
@@ -32,6 +32,21 @@ constexpr auto VIEW_RADIUS = 6;
 #define S2C_CHAT			6
 #define S2C_STAT_CHANGE     7
 
+#define NPC_PEACE 0
+#define NPC_WAR 1
+
+#define NPC_FIX 0
+#define NPC_RANDOM_MOVE 1
+
+enum GRID_TYPE
+{
+	eBLANK,
+	eSTART,
+	eEND,
+	eBLOCKED,
+	eOPEN,
+	eCLOSE,
+};
 
 #pragma pack(push ,1)
 
@@ -41,6 +56,7 @@ struct sc_packet_chat {
 	int	 id;
 	//wchar_t mess[MAX_STR_LEN];
 	char mess[MAX_STR_LEN];
+	int chatType; //0-개인 / 1-시스템
 };
 
 struct sc_packet_login_ok {
@@ -79,6 +95,10 @@ struct sc_packet_enter {
 	char name[MAX_ID_LEN];
 	char o_type;
 	short x, y;
+
+	bool npcCharacterType; //0-peace / 1-war
+	bool npcMoveType; //0-고정 / 1-로밍
+
 };
 
 struct sc_packet_leave {

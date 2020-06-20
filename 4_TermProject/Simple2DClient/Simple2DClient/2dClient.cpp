@@ -33,6 +33,10 @@ int g_myid;
 sf::RenderWindow* g_window;
 sf::Font g_font;
 
+sf::Text m_worldText[3];
+high_resolution_clock::time_point m_worldtime_out[3];
+
+
 class OBJECT {
 private:
 	bool m_showing;
@@ -52,6 +56,9 @@ public:
 	short level;
 	int exp;
 	short hp;
+
+	bool npcCharacterType; //0-peace / 1-war
+	bool npcMoveType; //0-고정 / 1-로밍
 
 	OBJECT(sf::Texture& t, int x, int y, int x2, int y2) {
 		m_showing = false;
@@ -85,13 +92,14 @@ public:
 		m_y = y;
 	}
 	void draw() {
+		
 		if (false == m_showing) return;
 		float rx = (m_x - g_left_x) * 65.0f + 8;
 		float ry = (m_y - g_top_y) * 65.0f + 8;
 		
 		m_sprite.setPosition(rx, ry);
 		g_window->draw(m_sprite);
-		
+
 		m_name.setPosition(rx - 10, ry - 50);
 		g_window->draw(m_name);
 		
@@ -105,6 +113,19 @@ public:
 		if (high_resolution_clock::now() < m_time_out) {
 			m_text.setPosition(rx - 10, ry + 15);
 			g_window->draw(m_text);
+		}
+
+		if (high_resolution_clock::now() < m_worldtime_out[0]) {
+			m_worldText[0].setPosition(10, WINDOW_HEIGHT + 640);
+			g_window->draw(m_worldText[0]);
+		}
+		if (high_resolution_clock::now() < m_worldtime_out[1]) {
+			m_worldText[1].setPosition(10, WINDOW_HEIGHT + 600);
+			g_window->draw(m_worldText[1]);
+		}
+		if (high_resolution_clock::now() < m_worldtime_out[2]) {
+			m_worldText[2].setPosition(10, WINDOW_HEIGHT + 560);
+			g_window->draw(m_worldText[2]);
 		}
 	}
 	void set_name(char str[]) {
@@ -146,16 +167,61 @@ public:
 		m_text.setString(chat);
 		m_time_out = high_resolution_clock::now() + 1s;
 	}
+
+	void add_chat_world(char chat[])
+	{
+		for (int i = 0; i < 3; ++i)
+		{
+			m_worldText[i].setFont(g_font);
+			m_worldText[i].setCharacterSize(40);
+			m_worldText[i].setFillColor(sf::Color(255, 255, 255));
+		}
+		m_worldText[2].setString(m_worldText[1].getString());
+		m_worldText[1].setString(m_worldText[0].getString());
+		m_worldText[0].setString(chat);
+
+		m_worldtime_out[2] = m_worldtime_out[1];
+		m_worldtime_out[1] = m_worldtime_out[0];
+		m_worldtime_out[0] = high_resolution_clock::now() + 2s;
+	}
 };
 
 OBJECT avatar;
 unordered_map <int, OBJECT> npcs;
 
-OBJECT white_tile;
-OBJECT black_tile;
+OBJECT blocked_tile;
+OBJECT blank_tile;
 
 sf::Texture* board;
 sf::Texture* pieces;
+
+char g_Map[WORLD_HEIGHT][WORLD_WIDTH];
+
+void init_map()
+{
+	char data;
+	FILE* fp = fopen("mapData.txt", "rb");
+
+	int count = 0;
+
+
+	while (fscanf(fp, "%c", &data) != EOF) {
+		//printf("%c", data);
+		switch (data)
+		{
+		case '0':
+			g_Map[count / 800][count % 800] = eBLANK;
+			count++;
+			break;
+		case '3':
+			g_Map[count / 800][count % 800] = eBLOCKED;
+			count++;
+			break;
+		default:
+			break;
+		}
+	}
+}
 
 void client_initialize()
 {
@@ -165,10 +231,11 @@ void client_initialize()
 		cout << "Font Loading Error!\n";
 		while (true);
 	}
-	board->loadFromFile("chessmap.bmp");
+	board->loadFromFile("mapTile.bmp");
+	//board->loadFromFile("chessmap.bmp");
 	pieces->loadFromFile("chess2.png");
-	white_tile = OBJECT{ *board, 5, 5, TILE_WIDTH, TILE_WIDTH };
-	black_tile = OBJECT{ *board, 69, 5, TILE_WIDTH, TILE_WIDTH };
+	blank_tile = OBJECT{ *board, 0, 0, TILE_WIDTH, TILE_WIDTH };
+	blocked_tile = OBJECT{ *board, 65, 0, TILE_WIDTH, TILE_WIDTH };
 	avatar = OBJECT{ *pieces, 128, 0, 64, 64 };
 	avatar.move(4, 4);
 }
@@ -210,7 +277,15 @@ void ProcessPacket(char* ptr)
 			if (id < NPC_ID_START)
 				npcs[id] = OBJECT{ *pieces, 64, 0, 64, 64 };
 			else
-				npcs[id] = OBJECT{ *pieces, 0, 0, 64, 64 };
+			{
+				if(npcs[id].npcCharacterType == NPC_WAR)
+					npcs[id] = OBJECT{ *pieces, 0, 0, 64, 64 };
+				else
+					npcs[id] = OBJECT{ *pieces, 192, 0, 64, 64 };
+			}
+			npcs[id].npcCharacterType = my_packet->npcCharacterType;
+			npcs[id].npcMoveType = my_packet->npcMoveType;
+
 			strcpy_s(npcs[id].name, my_packet->name);
 			npcs[id].set_name(my_packet->name);
 			npcs[id].move(my_packet->x, my_packet->y);
@@ -243,7 +318,9 @@ void ProcessPacket(char* ptr)
 		}
 		else {
 			if (0 != npcs.count(other_id))
+			{
 				npcs[other_id].hide();
+			}
 		}
 	}
 	break;
@@ -268,10 +345,19 @@ void ProcessPacket(char* ptr)
 	{	
 		sc_packet_chat* my_packet = reinterpret_cast<sc_packet_chat*>(ptr);
 		int o_id = my_packet->id;
-		if (0 != npcs.count(o_id))
+		int chatType = my_packet->chatType;
+		if (chatType == 0)
 		{
-			npcs[o_id].add_chat(my_packet->mess);
+			if (0 != npcs.count(o_id))
+			{
+				npcs[o_id].add_chat(my_packet->mess);
+			}
 		}
+		else
+		{
+			npcs[o_id].add_chat_world(my_packet->mess);
+		}
+
 	}
 	break;
 
@@ -372,22 +458,37 @@ void client_main()
 		if (received > 0) process_data(net_buf, received);
 
 	for (int i = 0; i < SCREEN_WIDTH; ++i)
+	{
 		for (int j = 0; j < SCREEN_HEIGHT; ++j)
 		{
 			int tile_x = i + g_left_x;
 			int tile_y = j + g_top_y;
 			if ((tile_x < 0) || (tile_y < 0)) continue;
-			//if (((tile_x + tile_y) % 2) == 0) {
-			if (((tile_x / 3 + tile_y / 3) % 2) == 0) {
-				white_tile.a_move(TILE_WIDTH * i + 7, TILE_WIDTH * j + 7);
-				white_tile.a_draw();
-			}
-			else
+
+			if (g_Map[tile_y][tile_x] == eBLANK)
 			{
-				black_tile.a_move(TILE_WIDTH * i + 7, TILE_WIDTH * j + 7);
-				black_tile.a_draw();
+				blank_tile.a_move(TILE_WIDTH * i, TILE_WIDTH * j);
+				blank_tile.a_draw();
 			}
+			else if (g_Map[tile_y][tile_x] == eBLOCKED)
+			{
+				blocked_tile.a_move(TILE_WIDTH * i, TILE_WIDTH * j);
+				blocked_tile.a_draw();
+			}
+
+			//if (((tile_x + tile_y) % 2) == 0) {
+			//	if (((tile_x / 3 + tile_y / 3) % 2) == 0) {
+			//		blank_tile.a_move(TILE_WIDTH * i + 7, TILE_WIDTH * j + 7);
+			//		blank_tile.a_draw();
+			//	}
+			//	else
+			//	{
+			//		blocked_tile.a_move(TILE_WIDTH * i + 7, TILE_WIDTH * j + 7);
+			//		blocked_tile.a_draw();
+			//	}
+			//}
 		}
+	}
 	avatar.draw();
 	//	for (auto &pl : players) pl.draw();
 	for (auto& npc : npcs) npc.second.draw();
@@ -409,6 +510,7 @@ void client_main()
 	g_window->draw(text);
 
 }
+	
 
 void send_packet(void* packet)
 {
@@ -426,6 +528,14 @@ void send_move_packet(unsigned char dir)
 	send_packet(&m_packet);
 }
 
+void send_attack_packet()
+{
+	cs_packet_attack m_packet;
+	m_packet.type = C2S_ATTACK;
+	m_packet.size = sizeof(m_packet);
+	send_packet(&m_packet);
+}
+
 
 int main()
 {
@@ -438,6 +548,7 @@ int main()
 		while (true);
 	}
 
+	init_map();
 	client_initialize();
 
 	cs_packet_login l_packet;
@@ -486,6 +597,9 @@ int main()
 					break;
 				case sf::Keyboard::Down:
 					send_move_packet(D_DOWN);
+					break;
+				case sf::Keyboard::Space:
+					send_attack_packet();
 					break;
 				case sf::Keyboard::Escape:
 					window.close();
