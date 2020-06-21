@@ -13,6 +13,8 @@
 
 #include "CDataBase.h"
 #include "protocol.h"
+#include "CAStar.h"
+
 #pragma comment (lib, "WS2_32.lib")
 #pragma comment (lib, "mswsock.lib")
 #pragma comment (lib, "lua53.lib")
@@ -86,6 +88,10 @@ struct CLIENT
 	//npc의 타입
 	bool npcCharacterType; //0-peace / 1-war
 	bool npcMoveType; //0-고정 / 1-로밍
+	
+	int** mapData;
+	CAStar pathfind;
+	CLIENT* target = nullptr;
 
 	unsigned  m_move_time;
 	unsigned  m_attack_time;
@@ -108,11 +114,6 @@ struct DATABASE
 	short level;
 	int exp;
 	short HP;
-};
-
-struct MAP
-{
-	GRID_TYPE type; //0-땅바닥, 3-장애물, 10-몬스터, 11-플레이어, 12-다른플레이어, 
 };
 
 MAP g_Map[WORLD_HEIGHT][WORLD_WIDTH];
@@ -557,6 +558,7 @@ void isNPCDie(int user_id, int npc_id)
 			send_stat_change_packet(vl, user_id);
 
 		add_timer(npc_id, OP_NPC_RESPON, 1000);
+		g_clients[npc_id].target = nullptr;
 	}
 }
 
@@ -661,8 +663,15 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 	{
 		if (false == is_near(cl.m_id, user_id)) continue;		//모든 클라 다 깨우는게 아니라 근처에 있는 애만 깨우기 
 		if (ST_SLEEP == cl.m_status)
+		{
 			cl.m_status = ST_ACTIVE;
+			//플레이어가 npc 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
+			if (cl.npcCharacterType == NPC_WAR)
+			{
+				cl.target = &g_clients[user_id];
+			}
 			//activate_npc(cl.m_id);		//잠들어 있던 npc면 active로 바꾸기
+		}	
 		if (ST_ACTIVE != cl.m_status) continue;					//그 외 상태는 빠져나가기
 		if (cl.m_id == user_id) continue;						//나 자신이면 빠져나가기
 		
@@ -739,6 +748,17 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 			{
 				g_clients[oldPlayer].m_cLock.unlock();
 				send_leave_packet(oldPlayer, user_id);
+				
+				//플레이어가 npc 시야에 벗어나면 안쫓아옴
+				if (g_clients[oldPlayer].npcCharacterType == NPC_WAR)
+				{
+					
+					char mess[100];
+					sprintf_s(mess, "LOST !");
+					send_chat_packet(user_id, oldPlayer, mess, 0);
+
+					g_clients[oldPlayer].target = nullptr;
+				}
 			}
 			else
 				g_clients[oldPlayer].m_cLock.unlock();
@@ -763,44 +783,67 @@ void random_move_npc(int npc_id)
 	int x = g_clients[npc_id].x;
 	int y = g_clients[npc_id].y;
 
-	switch (rand() % 4)
+	if (g_clients[npc_id].target != nullptr && g_clients[npc_id].npcCharacterType == NPC_WAR)
 	{
-	case 0:
-		if (g_Map[y][x+1].type == eBLANK)
+		bool ret = g_clients[npc_id].pathfind.searchLoad(g_clients[npc_id].mapData,
+			x, y, g_clients[npc_id].target->x, g_clients[npc_id].target->y);
+
+		if (ret)
 		{
-			if (x < WORLD_WIDTH - 1)
-			{
-				x++;
-			}
+			g_clients[npc_id].pathfind.returnPos(&x, &y);
+
+			char mess[100];
+			sprintf_s(mess, "I SEE YOU !");
+			send_chat_packet(g_clients[npc_id].target->m_id, npc_id, mess, 0);
 		}
-		break;
-	case 1:
-		if (g_Map[y][x-1].type == eBLANK)
+		else
 		{
-			if (x > 0)
-			{
-				x--;
-			}
+			char mess[100];
+			sprintf_s(mess, "WHERE ARE YOU !");
+			send_chat_packet(g_clients[npc_id].target->m_id, npc_id, mess, 0);
 		}
-		break;
-	case 2:
-		if (g_Map[y+1][x].type == eBLANK)
+	}
+	else
+	{
+		switch (rand() % 4)
 		{
-			if (y < WORLD_HEIGHT - 1)
+		case 0:
+			if (g_Map[y][x + 1].type == eBLANK)
 			{
-				y++;
+				if (x < WORLD_WIDTH - 1)
+				{
+					x++;
+				}
 			}
-		}
-		break;
-	case 3:
-		if (g_Map[y-1][x].type == eBLANK)
-		{
-			if (y > 0)
+			break;
+		case 1:
+			if (g_Map[y][x - 1].type == eBLANK)
 			{
-				y--;
+				if (x > 0)
+				{
+					x--;
+				}
 			}
+			break;
+		case 2:
+			if (g_Map[y + 1][x].type == eBLANK)
+			{
+				if (y < WORLD_HEIGHT - 1)
+				{
+					y++;
+				}
+			}
+			break;
+		case 3:
+			if (g_Map[y - 1][x].type == eBLANK)
+			{
+				if (y > 0)
+				{
+					y--;
+				}
+			}
+			break;
 		}
-		break;
 	}
 
 	g_clients[npc_id].x = x;
@@ -821,7 +864,9 @@ void random_move_npc(int npc_id)
 	//	//return;
 	//}
 	//else
-		add_timer(npc_id, OP_RANDOM_MOVE, 1000);
+
+	add_timer(npc_id, OP_RANDOM_MOVE, 1000);
+
 
 	for (int i = 0; i < NPC_ID_START; ++i)
 	{
@@ -891,6 +936,14 @@ void enter_game(int user_id, char name[])
 				send_enter_packet(user_id, i);
 				if(true == is_player(i)) //플레이어인 경우만 send. 안그러면 소켓이 없어서 에러남
 					send_enter_packet(i, user_id); //니가 나를 보면 나도 너를 본다
+				else
+				{
+					//플레이어가 npc 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
+					if (cl.npcCharacterType == NPC_WAR)
+					{
+						cl.target = &g_clients[user_id];
+					}
+				}
 			}
 			//g_clients[i].m_cLock.unlock();
 		}
@@ -1142,14 +1195,14 @@ void worker_Thread()
 
 		case OP_PLAYER_MOVE:
 		{
-			if (is_near(exover->p_id, user_id))
-			{
-				//플레이어가 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
-				if (g_clients[user_id].npcCharacterType == NPC_WAR)
-				{
-
-				}
-			}
+			//if (is_near(exover->p_id, user_id))
+			//{
+			//	//플레이어가 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
+			//	if (g_clients[user_id].npcCharacterType == NPC_WAR)
+			//	{
+			//		g_clients[user_id].target = &g_clients[exover->p_id];
+			//	}
+			//}
 
 			g_clients[user_id].lua_l.lock();
 			lua_State* L = g_clients[user_id].L;
@@ -1186,6 +1239,7 @@ void worker_Thread()
 			if (g_clients[user_id].npcMoveType == 1)
 				add_timer(user_id, OP_RANDOM_MOVE, 1000); //그냥 움직이는게 아니라 플레이어가 움직였을때 시야에 들어오면 깨워야 함
 			
+			g_clients[user_id].target = nullptr;
 			g_clients[user_id].m_status = ST_SLEEP;
 
 		}
@@ -1273,6 +1327,11 @@ void init_npc()
 		g_clients[i].moveCount = 0;
 		g_clients[i].npcCharacterType = rand() % 2;
 		g_clients[i].npcMoveType = rand() % 2;
+
+		g_clients[i].mapData = (int**)malloc(sizeof(int*) * WORLD_HEIGHT);
+		for (int j = 0; j < WORLD_HEIGHT; j++) {
+			g_clients[i].mapData[j] = (int*)malloc(sizeof(int) * WORLD_WIDTH);
+		}
 
 		//g_clients[i].m_last_move_time = high_resolution_clock::now();
 		if(g_clients[i].npcMoveType == 1)

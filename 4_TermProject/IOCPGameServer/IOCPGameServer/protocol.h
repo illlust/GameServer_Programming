@@ -48,6 +48,11 @@ enum GRID_TYPE
 	eCLOSE,
 };
 
+struct MAP
+{
+	GRID_TYPE type; //0-땅바닥, 3-장애물, 10-몬스터, 11-플레이어, 12-다른플레이어, 
+};
+
 #pragma pack(push ,1)
 
 struct sc_packet_chat {

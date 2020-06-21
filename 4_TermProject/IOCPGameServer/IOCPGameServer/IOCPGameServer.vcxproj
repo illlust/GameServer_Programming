@@ -115,6 +115,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="CAStar.h" />
     <ClInclude Include="CDataBase.h" />
     <ClInclude Include="lauxlib.h" />
     <ClInclude Include="lua.h" />
@@ -124,6 +125,7 @@
     <ClInclude Include="protocol.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="CAStar.cpp" />
     <ClCompile Include="CDataBase.cpp" />
     <ClCompile Include="IOCPServer.cpp" />
   </ItemGroup>

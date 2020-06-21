@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="소스 파일\AStarPathFind">
+      <UniqueIdentifier>{532e8340-9193-4554-99ac-99ec46dd97c3}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="protocol.h">
@@ -36,6 +39,9 @@
     <ClInclude Include="CDataBase.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="CAStar.h">
+      <Filter>소스 파일\AStarPathFind</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="IOCPServer.cpp">
@@ -43,6 +49,9 @@
     </ClCompile>
     <ClCompile Include="CDataBase.cpp">
       <Filter>소스 파일</Filter>
+    </ClCompile>
+    <ClCompile Include="CAStar.cpp">
+      <Filter>소스 파일\AStarPathFind</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
