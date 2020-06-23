@@ -482,17 +482,6 @@ void activate_npc(int id)
 	if (true == atomic_compare_exchange_strong(&g_clients[id].m_status, &old_status, ST_ACTIVE)) 
 		add_timer(id, OP_RANDOM_MOVE, 1000);
 }
-//int activate_npc(lua_State* L)
-//{
-//	int id = (int)lua_tointeger(L, -1);
-//
-//	//g_clients[id].m_status = ST_ACTIVE;
-//	C_STATUS old_status = ST_SLEEP;
-//	if (true == atomic_compare_exchange_strong(&g_clients[id].m_status, &old_status, ST_ACTIVE))
-//		add_timer(id, OP_RANDOM_MOVE, 1000);
-//	
-//	lua_pop(L, 1);
-// }
 
 void isPlayerLevelUp(int user_id)
 {
@@ -501,17 +490,6 @@ void isPlayerLevelUp(int user_id)
 		g_clients[user_id].exp = 0;
 		g_clients[user_id].hp = 100;
 		g_clients[user_id].level += 1;
-
-		//send_stat_change_packet(user_id, user_id);
-		//
-		//g_clients[user_id].m_cLock.lock();
-		//unordered_set<int> vl = g_clients[user_id].view_list;
-		//g_clients[user_id].m_cLock.unlock();
-		//
-		//for (auto vlPlayer : vl)
-		//{
-		//	send_stat_change_packet(vlPlayer, user_id);
-		//}
 	}
 }
 
@@ -574,8 +552,8 @@ void random_move_npc(int npc_id)
 	int x = g_clients[npc_id].x;
 	int y = g_clients[npc_id].y;
 
-	//if (g_clients[npc_id].target == nullptr && g_clients[npc_id].npcCharacterType != NPC_WAR)
-	//	return;
+	if (g_clients[npc_id].target == nullptr && g_clients[npc_id].npcMoveType != NPC_RANDOM_MOVE)
+		return;
 
 	if (g_clients[npc_id].target != nullptr)
 	{
@@ -649,22 +627,6 @@ void random_move_npc(int npc_id)
 
 	g_clients[npc_id].x = x;
 	g_clients[npc_id].y = y;
-	g_clients[npc_id].moveCount++;
-
-	//if (g_clients[npc_id].moveCount >= 3)
-	//{
-	//	g_clients[npc_id].lua_l.lock();
-	//	lua_State* L = g_clients[npc_id].L;
-	//	lua_getglobal(L, "event_say_bye");
-	//	lua_pushnumber(L, npc_id);//누가 움직였는지 받기 위해 exover에 union을 이용한다.
-	//	int err = lua_pcall(L, 1, 0, 0);
-	//	g_clients[npc_id].lua_l.unlock();
-	//
-	//	//g_clients[npc_id].moveCount = 0;
-	//	g_clients[npc_id].m_status = ST_SLEEP;
-	//	//return;
-	//}
-	//else
 
 	add_timer(npc_id, OP_RANDOM_MOVE, 1000);
 
@@ -684,6 +646,13 @@ void random_move_npc(int npc_id)
 			{
 				g_clients[i].m_cLock.unlock();
 				send_enter_packet(i, npc_id);
+
+				if (g_clients[npc_id].target == nullptr)
+				{
+					g_clients[npc_id].target = &g_clients[i];
+					if (g_clients[npc_id].npcMoveType != NPC_RANDOM_MOVE)
+						random_move_npc(npc_id);
+				}
 			}
 		}
 		else
@@ -731,7 +700,7 @@ void do_attack(int user_id)
 			isNPCDie(user_id, npc);
 
 			char mess[100];
-			sprintf_s(mess, "%s -> attack -> NPC %d (-%d).", g_clients[user_id].m_name, npc, g_clients[user_id].level * 10);
+			sprintf_s(mess, "%s -> attack -> NPC %d (-%d).", g_clients[user_id].m_name, npc, g_clients[user_id].level * 2);
 
 			for (int i=0; i< g_totalUserCount; ++i)
 			{
@@ -816,10 +785,12 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 			//플레이어가 npc 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
 			if (cl.npcCharacterType == NPC_WAR)
 			{
-				cl.target = &g_clients[user_id];
-
-				if (g_clients[cl.m_id].npcMoveType != NPC_RANDOM_MOVE)
-					random_move_npc(cl.m_id);
+				if (cl.target == nullptr)
+				{
+					cl.target = &g_clients[user_id];
+					if (g_clients[cl.m_id].npcMoveType != NPC_RANDOM_MOVE)
+						random_move_npc(cl.m_id);
+				}
 			}
 			//activate_npc(cl.m_id);		//잠들어 있던 npc면 active로 바꾸기
 		}	
@@ -848,8 +819,11 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 		{
 			send_enter_packet(user_id, newPlayer);
 
-			if (false == is_player(newPlayer))
+			if (false == is_player(newPlayer) && g_clients[newPlayer].npcCharacterType == NPC_WAR)
+			{
+				g_clients[newPlayer].target = &g_clients[user_id];
 				continue;
+			}
 
 			g_clients[newPlayer].m_cLock.lock();
 			if (0 == g_clients[newPlayer].view_list.count(user_id)) //멀티쓰레드 프로그램이니까, 다른 스레드에서 미리 시야 처리를 했을 수 있다.
@@ -866,8 +840,10 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 		//새로 들어온 플레이어가 아니라 옛날에도 보였던 애라면 이동을 알려줌
 		else
 		{
-			if (false == is_player(newPlayer)) continue;
-
+			if (false == is_player(newPlayer))
+			{
+				continue;
+			}
 			//상대방이 이동하면서 시야에서 나를 뺐을 수 있다. 그러니까 상대방 viewlist를 확인하고 보내야 한다.
 			g_clients[newPlayer].m_cLock.lock();
 			if (0 != g_clients[newPlayer].view_list.count(user_id))
@@ -892,19 +868,19 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 		{
 			send_leave_packet(user_id, oldPlayer);
 
-			if (false == is_player(oldPlayer)) continue;
+			if (false == is_player(oldPlayer))
+			{
+				//플레이어가 npc 시야에 벗어나면 안쫓아옴
+				if (oldPlayer >= NPC_ID_START)
+					g_clients[oldPlayer].target = nullptr;
+				continue;
+			}
 	
 			g_clients[oldPlayer].m_cLock.lock();
 			if (0 != g_clients[oldPlayer].view_list.count(user_id))
 			{
 				g_clients[oldPlayer].m_cLock.unlock();
 				send_leave_packet(oldPlayer, user_id);
-				
-				//플레이어가 npc 시야에 벗어나면 안쫓아옴
-				if (oldPlayer >= NPC_ID_START)
-				{
-					g_clients[oldPlayer].target = nullptr;
-				}
 			}
 			else
 				g_clients[oldPlayer].m_cLock.unlock();
@@ -931,7 +907,7 @@ void enter_game(int user_id, char name[])
 	g_clients[user_id].m_name[MAX_ID_LEN] = NULL;
 	send_login_ok_packet(user_id);
 
-	if (g_clients[user_id].hp <= 90)
+	if (g_clients[user_id].hp < 100)
 		add_timer(user_id, OP_PLAYER_HP_HEAL, 5000);
 	
 	g_clients[user_id].m_status = ST_ACTIVE;
@@ -962,10 +938,13 @@ void enter_game(int user_id, char name[])
 					//플레이어가 npc 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
 					if (cl.npcCharacterType == NPC_WAR)
 					{
-						cl.target = &g_clients[user_id];
+						if (g_clients[user_id].target == nullptr)
+						{
+							cl.target = &g_clients[user_id];
 
-						if (g_clients[cl.m_id].npcMoveType != NPC_RANDOM_MOVE)
-							random_move_npc(cl.m_id);
+							if (g_clients[cl.m_id].npcMoveType != NPC_RANDOM_MOVE)
+								random_move_npc(cl.m_id);
+						}
 					}
 				}
 			}
@@ -1058,6 +1037,12 @@ void disconnect(int user_id)
 			send_leave_packet(cl.m_id, user_id);
 		//cl.m_cLock.unlock();
 	}
+
+	for (auto vl : g_clients[user_id].view_list)
+	{
+		g_clients[vl].target = nullptr;
+	}
+
 	g_clients[user_id].m_status = ST_FREE;	//다 처리했으면 FREE
 	g_clients[user_id].m_cLock.unlock();
 }
@@ -1259,6 +1244,10 @@ void worker_Thread()
 
 			int target_id = g_clients[user_id].target->m_id;
 
+			if (g_clients[target_id].hp == 100)
+			{
+				add_timer(target_id, OP_PLAYER_HP_HEAL, 5000);
+			}
 			g_clients[target_id].hp -= g_clients[user_id].level;
 			char mess[100];
 			sprintf_s(mess, "NPC %d -> attack -> USER %d (-%d)", user_id, g_clients[target_id].m_id, g_clients[user_id].level);

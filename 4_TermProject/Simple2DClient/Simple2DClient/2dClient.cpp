@@ -39,6 +39,9 @@ high_resolution_clock::time_point m_worldtime_out[3];
 sf::Text m_responText;
 high_resolution_clock::time_point m_time_out_responText;
 
+sf::RectangleShape rectangle_EXPbox;
+sf::RectangleShape rectangle_EXP;
+
 class OBJECT {
 private:
 	bool m_showing;
@@ -49,11 +52,17 @@ private:
 	sf::Text m_text;
 	sf::Text m_name;
 	sf::Text m_level;
-	sf::Text m_exp;
 	sf::Text m_hp;
 
+	sf::RectangleShape rectangle_HPbox;
+	sf::RectangleShape rectangle_HP;
+
+	sf::CircleShape circle_levelBox;
+
 public:
+	sf::Text m_exp;
 	int m_x, m_y;
+	int m_id;
 	char name[MAX_ID_LEN];
 	short level;
 	int exp;
@@ -102,15 +111,55 @@ public:
 		m_sprite.setPosition(rx, ry);
 		g_window->draw(m_sprite);
 
-		m_name.setPosition(rx - 10, ry - 50);
+		m_name.setPosition(rx , ry - 65);
 		g_window->draw(m_name);
 		
-		m_level.setPosition(rx, ry-20);
+		//level
+		circle_levelBox.setPosition(sf::Vector2f(rx - 50, ry - 25));
+		circle_levelBox.setOutlineThickness(3.0f);
+		circle_levelBox.setOutlineColor(sf::Color::White);
+		circle_levelBox.setFillColor(sf::Color::Black);
+		circle_levelBox.setRadius(18);
+		g_window->draw(circle_levelBox);
+
+		m_level.setPosition(rx - 40, ry - 25);
 		g_window->draw(m_level);
-		m_exp.setPosition(rx, ry+10);
-		g_window->draw(m_exp);
-		m_hp.setPosition(rx, ry+40);
+
+		//exp
+		//rectangle_EXPbox.setPosition(sf::Vector2f(100, WINDOW_HEIGHT + 550));
+		//rectangle_EXPbox.setOutlineThickness(3.0f);
+		//rectangle_EXPbox.setOutlineColor(sf::Color::White);
+		//rectangle_EXPbox.setFillColor(sf::Color::Black);
+		//rectangle_EXPbox.setSize(sf::Vector2f(WINDOW_WIDTH + 500, 20));
+		//g_window->draw(rectangle_EXPbox);
+
+		//rectangle_EXP.setPosition(sf::Vector2f(100, WINDOW_HEIGHT + 550));
+		//rectangle_EXP.setFillColor(sf::Color::Blue);
+		//rectangle_EXP.setSize(sf::Vector2f(exp, 20));
+		//g_window->draw(rectangle_EXP);
+
+		////total exp level * level * 100 
+
+		//m_exp.setPosition(10, WINDOW_HEIGHT + 530);
+		//g_window->draw(m_exp);
+
+		//hp
+		rectangle_HPbox.setPosition(sf::Vector2f(rx, ry - 25));
+		rectangle_HPbox.setOutlineThickness(3.0f);
+		rectangle_HPbox.setOutlineColor(sf::Color::White);
+		rectangle_HPbox.setFillColor(sf::Color::Red);
+		rectangle_HPbox.setSize(sf::Vector2f(100, 30));
+		g_window->draw(rectangle_HPbox);
+
+		rectangle_HP.setPosition(sf::Vector2f(rx, ry - 25));
+		rectangle_HP.setFillColor(sf::Color::Green);
+		rectangle_HP.setSize(sf::Vector2f(hp, 30));
+		g_window->draw(rectangle_HP);
+		
+		m_hp.setPosition(rx + 10, ry - 25);
 		g_window->draw(m_hp);
+
+
 
 		if (high_resolution_clock::now() < m_time_out) {
 			m_text.setPosition(rx - 10, ry + 15);
@@ -137,7 +186,7 @@ public:
 	void set_name(char str[]) {
 		m_name.setFont(g_font);
 		m_name.setString(str);
-		m_name.setCharacterSize(50);
+		m_name.setCharacterSize(30);
 		m_name.setFillColor(sf::Color(255, 255, 0));
 		m_name.setStyle(sf::Text::Bold);
 	}
@@ -145,25 +194,27 @@ public:
 	void set_level(char str[]) {
 		m_level.setFont(g_font);
 		m_level.setString(str);
-		m_level.setCharacterSize(40);
-		m_level.setFillColor(sf::Color(255, 0, 0));
-		m_level.setStyle(sf::Text::Bold | sf::Text::StrikeThrough);
+		m_level.setCharacterSize(30);
+		m_level.setFillColor(sf::Color(255, 255, 255));
+		m_level.setStyle(sf::Text::Bold);
 	}
 
 	void set_exp(char str[]) {
 		m_exp.setFont(g_font);
 		m_exp.setString(str);
 		m_exp.setCharacterSize(40);
+		m_exp.setOutlineThickness(3.0f);
+		m_exp.setOutlineColor(sf::Color::White);
 		m_exp.setFillColor(sf::Color(255, 0, 0));
-		m_exp.setStyle(sf::Text::Bold | sf::Text::StrikeThrough);
+		m_exp.setStyle(sf::Text::Bold);
 	}
 
 	void set_hp(char str[]) {
 		m_hp.setFont(g_font);
 		m_hp.setString(str);
-		m_hp.setCharacterSize(40);
-		m_hp.setFillColor(sf::Color(255, 0, 0));
-		m_hp.setStyle(sf::Text::Bold | sf::Text::StrikeThrough);
+		m_hp.setCharacterSize(20);
+		m_hp.setFillColor(sf::Color(255, 255, 255));
+		m_hp.setStyle(sf::Text::Bold);
 	}
 
 
@@ -339,22 +390,6 @@ void ProcessPacket(char* ptr)
 	}
 	break;
 
-	//case S2C_NEAR_PLAYER:
-	//{
-	//	sc_packet_near *my_packet = reinterpret_cast<sc_packet_near *>(ptr);
-	//	int id = my_packet->id;
-	//
-	//	if (id == g_myid) {
-	//		avatar.move(my_packet->x, my_packet->y);
-	//		avatar.show();
-	//	}
-	//	//else if (id < MAX_USER) {
-	//	//	players[id].move(my_packet->x, my_packet->y);
-	//	//	players[id].show();
-	//	//}
-	//}
-	//break;
-
 	case S2C_CHAT:
 	{	
 		sc_packet_chat* my_packet = reinterpret_cast<sc_packet_chat*>(ptr);
@@ -393,10 +428,10 @@ void ProcessPacket(char* ptr)
 			sprintf(str, "%d", my_packet->level); 
 			avatar.set_level(str);
 			
-			sprintf(str, "%d", my_packet->exp); 
+			sprintf(str, "EXP "); 
 			avatar.set_exp(str);
 			
-			sprintf(str, "%d", my_packet->hp); 
+			sprintf(str, "%d/100", my_packet->hp); 
 			avatar.set_hp(str);
 
 			avatar.show();
@@ -410,10 +445,7 @@ void ProcessPacket(char* ptr)
 			sprintf(str, "%d", my_packet->level);
 			npcs[id].set_level(str);
 
-			sprintf(str, "%d", my_packet->exp);
-			npcs[id].set_exp(str);
-
-			sprintf(str, "%d", my_packet->hp);
+			sprintf(str, "%d/100", my_packet->hp);
 			npcs[id].set_hp(str);
 
 			npcs[id].show();
@@ -519,13 +551,31 @@ void client_main()
 	text.setString(buf);
 	g_window->draw(text);
 
-	sprintf_s(buf, "LV : %d ## EXP : %d/%d ## HP : %d", avatar.level, avatar.exp, avatar.level * avatar.level * 100, avatar.hp);
+	sprintf_s(buf, "LV : %d ## EXP : %d/%d ## HP : %d/100", avatar.level, avatar.exp, avatar.level * avatar.level * 100, avatar.hp);
 	text.setString(buf);
 	text.setPosition(300, -50);
 	text.setCharacterSize(40);
 	text.setOutlineColor(sf::Color::Green);
 	text.setStyle(sf::Text::Underlined);
 	g_window->draw(text);
+
+	//exp
+	rectangle_EXPbox.setPosition(sf::Vector2f(100, WINDOW_HEIGHT + 550));
+	rectangle_EXPbox.setOutlineThickness(3.0f);
+	rectangle_EXPbox.setOutlineColor(sf::Color::White);
+	rectangle_EXPbox.setFillColor(sf::Color::Black);
+	rectangle_EXPbox.setSize(sf::Vector2f(WINDOW_WIDTH + 500, 25));
+	g_window->draw(rectangle_EXPbox);
+
+	rectangle_EXP.setPosition(sf::Vector2f(100, WINDOW_HEIGHT + 550));
+	rectangle_EXP.setFillColor(sf::Color::Blue);
+	rectangle_EXP.setSize(sf::Vector2f((avatar.exp * WINDOW_WIDTH + 500) / (int)(100 * pow(2, (avatar.level - 1))), 25));
+	g_window->draw(rectangle_EXP);
+
+	//total exp level * level * 100 
+
+	avatar.m_exp.setPosition(10, WINDOW_HEIGHT + 530);
+	g_window->draw(avatar.m_exp);
 
 }
 	

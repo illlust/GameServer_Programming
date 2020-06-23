@@ -205,6 +205,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 	setF(newNode);
 	openList.push_back(newNode);
 	
+	int count = 0;
 
 	//단계별 출력때문에 timer에서 매번 호출
 	while (true)
@@ -227,6 +228,14 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 			//InvalidateRect(hWnd, NULL, false);
 			return true;
 		}
+
+		//100칸 이상 멀어지면 안따라감
+		if (count >= 100)
+		{
+			endNode = nullptr;
+			return false;
+		}
+		count++;
 
 		closeList.push_back(popNode);
 		int x = popNode->ix;
