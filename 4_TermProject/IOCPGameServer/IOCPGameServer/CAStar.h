@@ -50,7 +50,7 @@ public:
 
 	void setEndPos(int x, int y);
 	void setStartPos(int x, int y);
-	void returnPos(int* x, int* y);
+	bool returnPos(int* x, int* y); //공격시작이면 true
 	
 	bool searchLoad(int** mapData, int _startX, int _startY, int _endX, int _endY);
 	//void searchLoad(HWND hWnd);

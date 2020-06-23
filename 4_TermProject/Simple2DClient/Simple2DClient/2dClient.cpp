@@ -36,6 +36,8 @@ sf::Font g_font;
 sf::Text m_worldText[3];
 high_resolution_clock::time_point m_worldtime_out[3];
 
+sf::Text m_responText;
+high_resolution_clock::time_point m_time_out_responText;
 
 class OBJECT {
 private:
@@ -127,6 +129,10 @@ public:
 			m_worldText[2].setPosition(10, WINDOW_HEIGHT + 560);
 			g_window->draw(m_worldText[2]);
 		}
+		if (high_resolution_clock::now() < m_time_out_responText) {
+			m_responText.setPosition(200, WINDOW_HEIGHT - 300);
+			g_window->draw(m_responText);
+		}
 	}
 	void set_name(char str[]) {
 		m_name.setFont(g_font);
@@ -182,7 +188,15 @@ public:
 
 		m_worldtime_out[2] = m_worldtime_out[1];
 		m_worldtime_out[1] = m_worldtime_out[0];
-		m_worldtime_out[0] = high_resolution_clock::now() + 2s;
+		m_worldtime_out[0] = high_resolution_clock::now() + 5s;
+	}
+
+	void add_chat_respown(char chat[]) {
+		m_responText.setFont(g_font);
+		m_responText.setString(chat);
+		m_responText.setCharacterSize(100);
+		m_responText.setFillColor(sf::Color(255, 255, 255));
+		m_time_out_responText = high_resolution_clock::now() + 2s;
 	}
 };
 
@@ -278,7 +292,7 @@ void ProcessPacket(char* ptr)
 				npcs[id] = OBJECT{ *pieces, 64, 0, 64, 64 };
 			else
 			{
-				if(npcs[id].npcCharacterType == NPC_WAR)
+				if(my_packet->npcCharacterType == NPC_WAR)
 					npcs[id] = OBJECT{ *pieces, 0, 0, 64, 64 };
 				else
 					npcs[id] = OBJECT{ *pieces, 192, 0, 64, 64 };
@@ -353,9 +367,13 @@ void ProcessPacket(char* ptr)
 				npcs[o_id].add_chat(my_packet->mess);
 			}
 		}
-		else
+		else if (chatType == 1)
 		{
 			npcs[o_id].add_chat_world(my_packet->mess);
+		}
+		else if (chatType == 2)
+		{
+			npcs[o_id].add_chat_respown(my_packet->mess);
 		}
 
 	}

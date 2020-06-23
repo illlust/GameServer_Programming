@@ -31,7 +31,7 @@ using namespace std;
 using namespace chrono;
 
 
-enum ENUMOP { OP_RECV , OP_SEND, OP_ACCEPT, OP_RANDOM_MOVE , OP_PLAYER_MOVE, OP_PLAYER_HP_HEAL, OP_NPC_RESPON};
+enum ENUMOP { OP_RECV , OP_SEND, OP_ACCEPT, OP_RANDOM_MOVE , OP_PLAYER_MOVE, OP_PLAYER_HP_HEAL, OP_NPC_RESPAWN, OP_NPC_ATTACK};
 
 enum C_STATUS {ST_FREE, ST_ALLOCATED, ST_ACTIVE, ST_SLEEP};
 
@@ -516,6 +516,12 @@ void isPlayerLevelUp(int user_id)
 }
 
 
+void npc_do_attack(int npc_id)
+{
+	add_timer(npc_id, OP_NPC_ATTACK, 1000);
+}
+
+
 void isNPCDie(int user_id, int npc_id)
 {
 	if (g_clients[npc_id].hp <= 0)
@@ -557,244 +563,39 @@ void isNPCDie(int user_id, int npc_id)
 		for (auto vl : g_clients[user_id].view_list)
 			send_stat_change_packet(vl, user_id);
 
-		add_timer(npc_id, OP_NPC_RESPON, 1000);
+		add_timer(npc_id, OP_NPC_RESPAWN, 1000);
 		g_clients[npc_id].target = nullptr;
 	}
 }
 
-void do_attack(int user_id)
-{
-	g_clients[user_id].m_cLock.lock();
-	auto vl = g_clients[user_id].view_list;
-	g_clients[user_id].m_cLock.unlock();
-
-	for (auto npc : vl)
-	{
-		if (g_clients[npc].m_id < NPC_ID_START)
-			continue;
-
-		if ((g_clients[npc].x == g_clients[user_id].x && g_clients[npc].y == g_clients[user_id].y - 1) ||
-			(g_clients[npc].x == g_clients[user_id].x && g_clients[npc].y == g_clients[user_id].y + 1) ||
-			(g_clients[npc].x == g_clients[user_id].x - 1 && g_clients[npc].y == g_clients[user_id].y) ||
-			(g_clients[npc].x == g_clients[user_id].x + 1 && g_clients[npc].y == g_clients[user_id].y))
-		{
-			g_clients[npc].hp -= 10 * g_clients[user_id].level;
-			if(g_clients[npc].hp < 0) g_clients[npc].hp = 0;
-			isNPCDie(user_id, npc);
-
-			char mess[100];
-			sprintf_s(mess, "%s -> attack -> NPC %d (-%d).", g_clients[user_id].m_name, npc, g_clients[user_id].level * 10);
-
-			for (int i=0; i< g_totalUserCount; ++i)
-			{
-				send_stat_change_packet(i, npc);
-				send_chat_packet(i, user_id, mess, 1);
-			}
-		}
-	}
-}
-
-void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _Directy = 0)
-{
-	int x = g_clients[user_id].x;
-	int y = g_clients[user_id].y;
-
-	if (!isDirect)
-	{
-		switch (direction)
-		{
-		case D_UP:
-			if (g_Map[y-1][x].type == eBLANK)
-			{
-				if (y > 0)
-				{
-					y--;
-				}
-			}
-			break;
-		case D_DOWN:
-			if (g_Map[y+1][x].type == eBLANK)
-			{
-				if (y < WORLD_HEIGHT - 1)
-				{
-					y++;
-				}
-			}
-			break;
-		case D_LEFT:
-			if (g_Map[y][x-1].type == eBLANK)
-			{
-				if (x > 0)
-				{
-					x--;
-				}
-			}
-			break;
-		case D_RIGHT:
-			if (g_Map[y][x+1].type == eBLANK)
-			{
-				if (x < WORLD_WIDTH - 1)
-				{
-					x++;
-				}
-			}
-			break;
-		default:
-			cout << "unknown direction from client move packet \n";
-			DebugBreak();
-		}
-	}
-	else
-	{
-		x = _Directx;
-		y = _Directy;
-	}
-
-	g_clients[user_id].x = x;
-	g_clients[user_id].y = y;
-
-	//복사해두고 쓴다. 근데 그 이후에 어긋나더라도 그건 감수해야한다. 지금은 이정도로 만족하자
-	g_clients[user_id].m_cLock.lock();
-	unordered_set<int> old_vl = g_clients[user_id].view_list;
-	g_clients[user_id].m_cLock.unlock();
-	
-	unordered_set<int> new_vl;
-	for (auto &cl : g_clients)
-	{
-		if (false == is_near(cl.m_id, user_id)) continue;		//모든 클라 다 깨우는게 아니라 근처에 있는 애만 깨우기 
-		if (ST_SLEEP == cl.m_status)
-		{
-			cl.m_status = ST_ACTIVE;
-			//플레이어가 npc 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
-			if (cl.npcCharacterType == NPC_WAR)
-			{
-				cl.target = &g_clients[user_id];
-			}
-			//activate_npc(cl.m_id);		//잠들어 있던 npc면 active로 바꾸기
-		}	
-		if (ST_ACTIVE != cl.m_status) continue;					//그 외 상태는 빠져나가기
-		if (cl.m_id == user_id) continue;						//나 자신이면 빠져나가기
-		
-		//ncp라면 플레이어가 이동했다고 OP_PLAYER_MOVE를 보내준다. 
-		if (false == is_player(cl.m_id))
-		{
-			EXOVER* over = new EXOVER();
-			over->p_id = user_id;
-			over->op = OP_PLAYER_MOVE;
-			PostQueuedCompletionStatus(g_iocp, 1, cl.m_id, &over->over);
-		}
-		new_vl.insert(cl.m_id);									//새로운 view list에 삽입
-	}
-
-	//밑에서 view list로 알려주니까 나한테는 안 알려줌. 그래서 지금 먼저 나한테 이동을 알려줘야 함.
-	send_move_packet(user_id, user_id);
-
-	//시야에 새로 들어온 플레이어 
-	for (auto newPlayer : new_vl)
-	{
-		//old_vl에 없었는데 new_vl에 있다면 새로 생긴 것.
-		if (0 == old_vl.count(newPlayer))
-		{
-			send_enter_packet(user_id, newPlayer);
-
-			if (false == is_player(newPlayer))
-				continue;
-
-			g_clients[newPlayer].m_cLock.lock();
-			if (0 == g_clients[newPlayer].view_list.count(user_id)) //멀티쓰레드 프로그램이니까, 다른 스레드에서 미리 시야 처리를 했을 수 있다.
-			{
-				g_clients[newPlayer].m_cLock.unlock();
-				send_enter_packet(newPlayer, user_id);
-			}
-			else
-			{
-				g_clients[newPlayer].m_cLock.unlock();
-				send_move_packet(newPlayer, user_id);
-			}
-		}
-		//새로 들어온 플레이어가 아니라 옛날에도 보였던 애라면 이동을 알려줌
-		else
-		{
-			if (false == is_player(newPlayer)) continue;
-
-			//상대방이 이동하면서 시야에서 나를 뺐을 수 있다. 그러니까 상대방 viewlist를 확인하고 보내야 한다.
-			g_clients[newPlayer].m_cLock.lock();
-			if (0 != g_clients[newPlayer].view_list.count(user_id))
-			{
-				g_clients[newPlayer].m_cLock.unlock();
-				send_move_packet(newPlayer, user_id);
-			}
-			else
-			{
-				g_clients[newPlayer].m_cLock.unlock();
-				send_enter_packet(newPlayer, user_id);
-			}
-		}
-	}
-
-
-	//시야에서 벗어난 플레이어
-	for (auto oldPlayer : old_vl)
-	{
-
-		if (0 == new_vl.count(oldPlayer))
-		{
-			send_leave_packet(user_id, oldPlayer);
-
-			if (false == is_player(oldPlayer)) continue;
-	
-			g_clients[oldPlayer].m_cLock.lock();
-			if (0 != g_clients[oldPlayer].view_list.count(user_id))
-			{
-				g_clients[oldPlayer].m_cLock.unlock();
-				send_leave_packet(oldPlayer, user_id);
-				
-				//플레이어가 npc 시야에 벗어나면 안쫓아옴
-				if (g_clients[oldPlayer].npcCharacterType == NPC_WAR)
-				{
-					
-					char mess[100];
-					sprintf_s(mess, "LOST !");
-					send_chat_packet(user_id, oldPlayer, mess, 0);
-
-					g_clients[oldPlayer].target = nullptr;
-				}
-			}
-			else
-				g_clients[oldPlayer].m_cLock.unlock();
-		}
-	}
-}
-
-void isPlayerDie(int user_id)
-{
-	if (g_clients[user_id].hp <= 0)
-	{
-		g_clients[user_id].exp = g_clients[user_id].exp / 2;
-		g_clients[user_id].hp = 100;
-
-		do_move(user_id, 0, true, 400, 400);
-		send_stat_change_packet(user_id, user_id);
-	}
-}
 
 void random_move_npc(int npc_id)
 {
 	int x = g_clients[npc_id].x;
 	int y = g_clients[npc_id].y;
 
-	if (g_clients[npc_id].target != nullptr && g_clients[npc_id].npcCharacterType == NPC_WAR)
+	//if (g_clients[npc_id].target == nullptr && g_clients[npc_id].npcCharacterType != NPC_WAR)
+	//	return;
+
+	if (g_clients[npc_id].target != nullptr)
 	{
 		bool ret = g_clients[npc_id].pathfind.searchLoad(g_clients[npc_id].mapData,
 			x, y, g_clients[npc_id].target->x, g_clients[npc_id].target->y);
 
 		if (ret)
 		{
-			g_clients[npc_id].pathfind.returnPos(&x, &y);
+			bool isattack = g_clients[npc_id].pathfind.returnPos(&x, &y);
 
-			char mess[100];
-			sprintf_s(mess, "I SEE YOU !");
-			send_chat_packet(g_clients[npc_id].target->m_id, npc_id, mess, 0);
+			if (isattack)
+				npc_do_attack(npc_id);
+
+
+			if (g_clients[npc_id].target != nullptr)
+			{
+				char mess[100];
+				sprintf_s(mess, "I SEE YOU !");
+				send_chat_packet(g_clients[npc_id].target->m_id, npc_id, mess, 0);
+			}
 		}
 		else
 		{
@@ -900,6 +701,226 @@ void random_move_npc(int npc_id)
 
 }
 
+void do_attack(int user_id)
+{
+	g_clients[user_id].m_cLock.lock();
+	auto vl = g_clients[user_id].view_list;
+	g_clients[user_id].m_cLock.unlock();
+
+	for (auto npc : vl)
+	{
+		if (g_clients[npc].m_id < NPC_ID_START)
+			continue;
+
+		if ((g_clients[npc].x == g_clients[user_id].x && g_clients[npc].y == g_clients[user_id].y - 1) ||
+			(g_clients[npc].x == g_clients[user_id].x && g_clients[npc].y == g_clients[user_id].y + 1) ||
+			(g_clients[npc].x == g_clients[user_id].x - 1 && g_clients[npc].y == g_clients[user_id].y) ||
+			(g_clients[npc].x == g_clients[user_id].x + 1 && g_clients[npc].y == g_clients[user_id].y))
+		{
+
+			g_clients[npc].hp -= 2 * g_clients[user_id].level;
+
+			if (g_clients[npc].target == nullptr)
+			{
+				g_clients[npc].target = &g_clients[user_id];
+				if (g_clients[npc].npcMoveType != NPC_RANDOM_MOVE)
+					random_move_npc(npc);
+			}
+
+			if(g_clients[npc].hp < 0) g_clients[npc].hp = 0;
+			isNPCDie(user_id, npc);
+
+			char mess[100];
+			sprintf_s(mess, "%s -> attack -> NPC %d (-%d).", g_clients[user_id].m_name, npc, g_clients[user_id].level * 10);
+
+			for (int i=0; i< g_totalUserCount; ++i)
+			{
+				send_stat_change_packet(i, npc);
+				send_chat_packet(i, user_id, mess, 1);
+			}
+		}
+	}
+}
+
+void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _Directy = 0)
+{
+	int x = g_clients[user_id].x;
+	int y = g_clients[user_id].y;
+
+	if (!isDirect)
+	{
+		switch (direction)
+		{
+		case D_UP:
+			if (g_Map[y-1][x].type == eBLANK)
+			{
+				if (y > 0)
+				{
+					y--;
+				}
+			}
+			break;
+		case D_DOWN:
+			if (g_Map[y+1][x].type == eBLANK)
+			{
+				if (y < WORLD_HEIGHT - 1)
+				{
+					y++;
+				}
+			}
+			break;
+		case D_LEFT:
+			if (g_Map[y][x-1].type == eBLANK)
+			{
+				if (x > 0)
+				{
+					x--;
+				}
+			}
+			break;
+		case D_RIGHT:
+			if (g_Map[y][x+1].type == eBLANK)
+			{
+				if (x < WORLD_WIDTH - 1)
+				{
+					x++;
+				}
+			}
+			break;
+		default:
+			cout << "unknown direction from client move packet \n";
+			DebugBreak();
+		}
+	}
+	else
+	{
+		x = _Directx;
+		y = _Directy;
+	}
+
+	g_clients[user_id].x = x;
+	g_clients[user_id].y = y;
+
+	//복사해두고 쓴다. 근데 그 이후에 어긋나더라도 그건 감수해야한다. 지금은 이정도로 만족하자
+	g_clients[user_id].m_cLock.lock();
+	unordered_set<int> old_vl = g_clients[user_id].view_list;
+	g_clients[user_id].m_cLock.unlock();
+	
+	unordered_set<int> new_vl;
+	for (auto &cl : g_clients)
+	{
+		if (false == is_near(cl.m_id, user_id)) continue;		//모든 클라 다 깨우는게 아니라 근처에 있는 애만 깨우기 
+		if (ST_SLEEP == cl.m_status)
+		{
+			cl.m_status = ST_ACTIVE;
+			//플레이어가 npc 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
+			if (cl.npcCharacterType == NPC_WAR)
+			{
+				cl.target = &g_clients[user_id];
+
+				if (g_clients[cl.m_id].npcMoveType != NPC_RANDOM_MOVE)
+					random_move_npc(cl.m_id);
+			}
+			//activate_npc(cl.m_id);		//잠들어 있던 npc면 active로 바꾸기
+		}	
+		if (ST_ACTIVE != cl.m_status) continue;					//그 외 상태는 빠져나가기
+		if (cl.m_id == user_id) continue;						//나 자신이면 빠져나가기
+		
+		//ncp라면 플레이어가 이동했다고 OP_PLAYER_MOVE를 보내준다. 
+		if (false == is_player(cl.m_id))
+		{
+			EXOVER* over = new EXOVER();
+			over->p_id = user_id;
+			over->op = OP_PLAYER_MOVE;
+			PostQueuedCompletionStatus(g_iocp, 1, cl.m_id, &over->over);
+		}
+		new_vl.insert(cl.m_id);									//새로운 view list에 삽입
+	}
+
+	//밑에서 view list로 알려주니까 나한테는 안 알려줌. 그래서 지금 먼저 나한테 이동을 알려줘야 함.
+	send_move_packet(user_id, user_id);
+
+	//시야에 새로 들어온 플레이어 
+	for (auto newPlayer : new_vl)
+	{
+		//old_vl에 없었는데 new_vl에 있다면 새로 생긴 것.
+		if (0 == old_vl.count(newPlayer))
+		{
+			send_enter_packet(user_id, newPlayer);
+
+			if (false == is_player(newPlayer))
+				continue;
+
+			g_clients[newPlayer].m_cLock.lock();
+			if (0 == g_clients[newPlayer].view_list.count(user_id)) //멀티쓰레드 프로그램이니까, 다른 스레드에서 미리 시야 처리를 했을 수 있다.
+			{
+				g_clients[newPlayer].m_cLock.unlock();
+				send_enter_packet(newPlayer, user_id);
+			}
+			else
+			{
+				g_clients[newPlayer].m_cLock.unlock();
+				send_move_packet(newPlayer, user_id);
+			}
+		}
+		//새로 들어온 플레이어가 아니라 옛날에도 보였던 애라면 이동을 알려줌
+		else
+		{
+			if (false == is_player(newPlayer)) continue;
+
+			//상대방이 이동하면서 시야에서 나를 뺐을 수 있다. 그러니까 상대방 viewlist를 확인하고 보내야 한다.
+			g_clients[newPlayer].m_cLock.lock();
+			if (0 != g_clients[newPlayer].view_list.count(user_id))
+			{
+				g_clients[newPlayer].m_cLock.unlock();
+				send_move_packet(newPlayer, user_id);
+			}
+			else
+			{
+				g_clients[newPlayer].m_cLock.unlock();
+				send_enter_packet(newPlayer, user_id);
+			}
+		}
+	}
+
+
+	//시야에서 벗어난 플레이어
+	for (auto oldPlayer : old_vl)
+	{
+
+		if (0 == new_vl.count(oldPlayer))
+		{
+			send_leave_packet(user_id, oldPlayer);
+
+			if (false == is_player(oldPlayer)) continue;
+	
+			g_clients[oldPlayer].m_cLock.lock();
+			if (0 != g_clients[oldPlayer].view_list.count(user_id))
+			{
+				g_clients[oldPlayer].m_cLock.unlock();
+				send_leave_packet(oldPlayer, user_id);
+				
+				//플레이어가 npc 시야에 벗어나면 안쫓아옴
+				if (oldPlayer >= NPC_ID_START)
+				{
+					g_clients[oldPlayer].target = nullptr;
+				}
+			}
+			else
+				g_clients[oldPlayer].m_cLock.unlock();
+		}
+	}
+}
+
+bool isPlayerDie(int user_id)
+{
+	if (g_clients[user_id].hp <= 0)
+	{
+		return true;
+	}
+	else
+		return false;
+}
 
 
 void enter_game(int user_id, char name[])
@@ -942,6 +963,9 @@ void enter_game(int user_id, char name[])
 					if (cl.npcCharacterType == NPC_WAR)
 					{
 						cl.target = &g_clients[user_id];
+
+						if (g_clients[cl.m_id].npcMoveType != NPC_RANDOM_MOVE)
+							random_move_npc(cl.m_id);
 					}
 				}
 			}
@@ -1175,19 +1199,6 @@ void worker_Thread()
 		case OP_RANDOM_MOVE:
 		{
 			random_move_npc(user_id);
-			
-			//bool keep_alive = false;
-			//
-			////active인 플레이어가 주변에 있으면 계속 깨워두기
-			//for(int i=0; i<NPC_ID_START; ++i)
-			//	if(true == is_near(user_id, i))
-			//		if (ST_ACTIVE == g_clients[i].m_status)
-			//		{
-			//			keep_alive = true;
-			//			break;
-			//		}
-			//if (true == keep_alive) add_timer(user_id, OP_RANDOM_MOVE, 1000);
-			//else g_clients[user_id].m_status = ST_SLEEP; //주위에 이제 아무도 없으면 SLEEP으로 멈춰두기
 
 			delete exover;
 		}
@@ -1195,15 +1206,6 @@ void worker_Thread()
 
 		case OP_PLAYER_MOVE:
 		{
-			//if (is_near(exover->p_id, user_id))
-			//{
-			//	//플레이어가 시야에 들어오면 1초마다 길찾기 하면서 쫓아옴
-			//	if (g_clients[user_id].npcCharacterType == NPC_WAR)
-			//	{
-			//		g_clients[user_id].target = &g_clients[exover->p_id];
-			//	}
-			//}
-
 			g_clients[user_id].lua_l.lock();
 			lua_State* L = g_clients[user_id].L;
 			lua_getglobal(L, "event_player_move");
@@ -1218,7 +1220,9 @@ void worker_Thread()
 		{
 			//플레이어 hp 5초마다 10씩 회복
 			g_clients[user_id].hp += 10;
-			if(g_clients[user_id].hp<=90)
+			if (g_clients[user_id].hp >= 100)
+				g_clients[user_id].hp = 100;
+			else if (g_clients[user_id].hp < 100)
 				add_timer(user_id, OP_PLAYER_HP_HEAL, 5000);
 
 			send_stat_change_packet(user_id, user_id);
@@ -1227,13 +1231,17 @@ void worker_Thread()
 			unordered_set<int> vl = g_clients[user_id].view_list;
 			g_clients[user_id].m_cLock.unlock();
 
+			char mess[100];
+			sprintf_s(mess, "USER%d HP(+10)",user_id);
+
 			for (auto vlPlayer : vl)
 			{
 				send_stat_change_packet(vlPlayer, user_id);
+				send_chat_packet(vlPlayer, user_id, mess, 1);
 			}
 		}
 		break;
-		case OP_NPC_RESPON:
+		case OP_NPC_RESPAWN:
 		{
 			g_clients[user_id].hp = 100;
 			if (g_clients[user_id].npcMoveType == 1)
@@ -1242,6 +1250,45 @@ void worker_Thread()
 			g_clients[user_id].target = nullptr;
 			g_clients[user_id].m_status = ST_SLEEP;
 
+		}
+			break;
+		case OP_NPC_ATTACK:
+		{
+			if (g_clients[user_id].target == nullptr)
+				break;
+
+			int target_id = g_clients[user_id].target->m_id;
+
+			g_clients[target_id].hp -= g_clients[user_id].level;
+			char mess[100];
+			sprintf_s(mess, "NPC %d -> attack -> USER %d (-%d)", user_id, g_clients[target_id].m_id, g_clients[user_id].level);
+			
+			for (int i = 0; i < 5; ++i)
+				send_chat_packet(i, target_id, mess, 1);
+
+			bool isdie = isPlayerDie(target_id);
+
+			if (isdie)
+			{
+
+				g_clients[target_id].exp /= 2;
+				g_clients[target_id].hp = 100;
+				do_move(g_clients[target_id].m_id, 0, true, 401, 400);
+
+				for (int i = 0; i < 5; ++i)
+					send_stat_change_packet(i, g_clients[target_id].m_id);
+				
+				char mess1[100];
+				sprintf_s(mess1, "!!! RESPAWN !!!");
+				send_chat_packet(g_clients[target_id].m_id, g_clients[target_id].m_id,mess1, 2);
+				
+				g_clients[user_id].target = nullptr;
+			}
+			else if (!isdie)
+			{
+				for (int i = 0; i < 5; ++i)
+					send_stat_change_packet(i, g_clients[target_id].m_id);
+			}
 		}
 			break;
 		default:
@@ -1260,10 +1307,6 @@ int API_SendMessageHELLO(lua_State* L)
 
 	send_chat_packet(user_id, my_id, message,0);
 	g_clients[my_id].moveCount = 0;
-
-	//원래 고정이었던 애들만 타이머 추가
-	//if (g_clients[my_id].npcMoveType = NPC_PEACE && g_clients[my_id].npcCharacterType == NPC_RANDOM_MOVE)
-	//	add_timer(my_id, OP_RANDOM_MOVE, 1000);
 
 	lua_pop(L, 3);
 	return 0; //리턴 값 개수 0개
@@ -1334,7 +1377,7 @@ void init_npc()
 		}
 
 		//g_clients[i].m_last_move_time = high_resolution_clock::now();
-		if(g_clients[i].npcMoveType == 1)
+		if(g_clients[i].npcMoveType == NPC_RANDOM_MOVE)
 			add_timer(i, OP_RANDOM_MOVE, 1000); //그냥 움직이는게 아니라 플레이어가 움직였을때 시야에 들어오면 깨워야 함
 
 
@@ -1385,8 +1428,6 @@ void do_timer()
 			{	EXOVER* over = new EXOVER();
 				over->op = ev.event_id;
 				PostQueuedCompletionStatus(g_iocp, 1, ev.obj_id, &over->over);
-				//random_move_npc(ev.obj_id);
-				//add_timer(ev.obj_id, ev.event_id, 1000);
 			}
 			break;
 			case OP_PLAYER_HP_HEAL:
@@ -1396,7 +1437,14 @@ void do_timer()
 				PostQueuedCompletionStatus(g_iocp, 1, ev.obj_id, &over->over);
 			}
 			break;
-			case OP_NPC_RESPON:
+			case OP_NPC_RESPAWN:
+			{
+				EXOVER* over = new EXOVER();
+				over->op = ev.event_id;
+				PostQueuedCompletionStatus(g_iocp, 1, ev.obj_id, &over->over);
+			}
+			break;
+			case OP_NPC_ATTACK:
 			{
 				EXOVER* over = new EXOVER();
 				over->op = ev.event_id;

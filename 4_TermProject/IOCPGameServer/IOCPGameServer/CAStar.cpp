@@ -133,21 +133,32 @@ void CAStar::setStartPos(int x, int y)
 	istartY = y;
 }
 
-void CAStar::returnPos(int * x, int * y)
+bool CAStar::returnPos(int * x, int * y)
 {
 	if (endNode == nullptr)
-		return;
+		return false;
 
 	NODE* temp = endNode;
+
+	if (temp->pParent == nullptr)
+	{
+		return false;
+	}
+
+	//만약 플레이어 위치 == NPC 위치 
+		//이동X 공격O -> return
+	if (temp->pParent->ix == istartX && temp->pParent->iy == istartY)
+	{
+		return true;
+	}
+
 	while (true)
 	{
 		if (temp->pParent == nullptr)
 		{
-			return;
+			return false;
 		}
-
-		//만약 플레이어 위치 == NPC 위치 
-		//이동X 공격O -> return
+		
 
 		//만약 플레이어 위치 != NPC 위치  다르다면
 		*x = temp->ix;
