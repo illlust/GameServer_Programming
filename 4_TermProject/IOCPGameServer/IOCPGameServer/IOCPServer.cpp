@@ -126,7 +126,7 @@ list<DATABASE> g_dbData;
 HANDLE g_iocp;					//iocp 핸들
 SOCKET listenSocket;			//서버 전체에 하나. 한번 정해지고 안바뀌니 데이터레이스 아님. 
 
-int g_totalUserCount = 5;
+atomic_int g_totalUserCount;
 
 void LoadData() {
 	SQLHENV henv;
@@ -185,7 +185,7 @@ void LoadData() {
 							retcode = SQLFetch(hstmt);
 							if (retcode == SQL_ERROR || retcode == SQL_SUCCESS_WITH_INFO)
 							{
-								show_error();
+								//show_error();
 								HandleDiagnosticRecord(hdbc, SQL_HANDLE_DBC, retcode);
 							}
 							if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO)
@@ -285,7 +285,7 @@ void UpdateData(int keyid, int x, int y, int level, int exp, int hp)
 					//retcode = SQLExecDirect(hstmt, (SQLWCHAR *)L"EXEC select_highlevel 90", SQL_NTS); // 90레벨 이상만 가져오기
 
 					if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO) {
-						printf( "DataBase update success \n user_x = %d, user_y = %d, user_EXP = %d, user_HP = %d, user_LEVEL = %d WHERE user_id = %d", 
+						printf( "DataBase update success user_x = %d, user_y = %d, user_EXP = %d, user_HP = %d, user_LEVEL = %d WHERE user_id = %d \n", 
 							x, y, exp, hp, level, keyid);
 					}
 					
@@ -351,7 +351,7 @@ void InsertData(int keyid, char* name, int x, int y, int level, int exp, int hp)
 					//retcode = SQLExecDirect(hstmt, (SQLWCHAR *)L"EXEC select_highlevel 90", SQL_NTS); // 90레벨 이상만 가져오기
 
 					if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO) {
-						printf("DataBase insert success \n user_x = %d, user_y = %d, user_EXP = %d, user_HP = %d, user_LEVEL = %d WHERE user_id = %d",
+						printf("DataBase insert success user_x = %d, user_y = %d, user_EXP = %d, user_HP = %d, user_LEVEL = %d WHERE user_id = %d \n",
 							x, y, exp, hp, level, keyid);
 
 						DATABASE db;
@@ -434,9 +434,12 @@ void send_login_ok_packet(int user_id)
 	send_packet(user_id, &psc);
 }
 
-void send_login_fail_packet()
+void send_login_fail_packet(int user_id)
 {
-
+	sc_packet_login_fail p;
+	p.size = sizeof(p);
+	p.type = S2C_LOGIN_FAIL;
+	send_packet(user_id, &p); //&p로 주지 않으면 복사되어서 날라가니까 성능에 안좋다. 
 }
 
 
@@ -706,7 +709,7 @@ void random_move_npc(int npc_id)
 	add_timer(npc_id, OP_RANDOM_MOVE, 1000);
 
 
-	for (int i = 0; i < NPC_ID_START; ++i)
+	for (int i = 0; i < g_totalUserCount; ++i)
 	{
 		if (g_clients[i].m_status != ST_ACTIVE) continue;
 		if (true == is_near(i, npc_id))
@@ -886,6 +889,11 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 	//밑에서 view list로 알려주니까 나한테는 안 알려줌. 그래서 지금 먼저 나한테 이동을 알려줘야 함.
 	send_move_packet(user_id, user_id);
 
+
+	g_clients[user_id].m_cLock.lock();
+	old_vl = g_clients[user_id].view_list;
+	g_clients[user_id].m_cLock.unlock();
+
 	//시야에 새로 들어온 플레이어 
 	for (auto newPlayer : new_vl)
 	{
@@ -896,9 +904,16 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 
 			if (false == is_player(newPlayer) && g_clients[newPlayer].npcCharacterType == NPC_WAR)
 			{
-				g_clients[newPlayer].target = &g_clients[user_id];
+				if (g_clients[newPlayer].target == nullptr)
+				{
+					g_clients[newPlayer].target = &g_clients[user_id];
+					if (g_clients[newPlayer].npcMoveType != NPC_RANDOM_MOVE)
+						random_move_npc(newPlayer);
+				}
 				continue;
 			}
+			if (false == is_player(newPlayer))
+				continue;
 
 			g_clients[newPlayer].m_cLock.lock();
 			if (0 == g_clients[newPlayer].view_list.count(user_id)) //멀티쓰레드 프로그램이니까, 다른 스레드에서 미리 시야 처리를 했을 수 있다.
@@ -1038,7 +1053,7 @@ void process_packet(int user_id, char* buf)
 
 		for (auto dblist : g_dbData)
 		{
-			cout << "<" << packet->name << ">, <" << dblist.Name <<">"<<  endl;
+			//cout << "<" << packet->name << ">, <" << dblist.Name <<">"<<  endl;
 			if (strcmp(packet->name, dblist.Name) == 0)
 			{
 				g_clients[user_id].x = dblist.x;
@@ -1049,38 +1064,40 @@ void process_packet(int user_id, char* buf)
 				g_clients[user_id].level = dblist.level;
 				memcpy(g_clients[user_id].m_name, packet->name, 10);
 				enter_game(user_id, packet->name);
+				g_totalUserCount++;
 				return;
 			}
 		}
 
 		//id가 없다면 새로 생성 
-		//if (strcmp(packet->name, "") == 0)
-		{
-			int x;
-			int y;
-			while (true)
-			{
-				x = rand() % WORLD_WIDTH;
-				y = rand() % WORLD_HEIGHT;
+		send_login_fail_packet(user_id);
+		closesocket(g_clients[user_id].m_socket);
+		
+		//
+		//int x;
+		//int y;
+		//while (true)
+		//{
+		//	x = rand() % WORLD_WIDTH;
+		//	y = rand() % WORLD_HEIGHT;
+		//
+		//	if (g_Map[y][x].type == eBLANK)
+		//		break;
+		//}
+		//
+		//g_totalUserCount++;
+		//InsertData(g_totalUserCount, packet->name, x, y, 1, 0, 100);
+		//g_clients[user_id].x = x;
+		//g_clients[user_id].y = y;
+		//g_clients[user_id].m_db = g_totalUserCount;
+		//g_clients[user_id].exp = 0;
+		//g_clients[user_id].hp = 100;
+		//g_clients[user_id].level = 1;
+		//memcpy(g_clients[user_id].m_name, packet->name, sizeof(packet->name));
+		//enter_game(user_id, packet->name);
+		//
 
-				if (g_Map[y][x].type == eBLANK)
-					break;
-			}
 
-			g_totalUserCount++;
-			InsertData(g_totalUserCount, packet->name, x, y, 1, 0, 100);
-			g_clients[user_id].x = x;
-			g_clients[user_id].y = y;
-			g_clients[user_id].m_db = g_totalUserCount;
-			g_clients[user_id].exp = 0;
-			g_clients[user_id].hp = 100;
-			g_clients[user_id].level = 1;
-			sprintf_s(g_clients[user_id].m_name, "USER%d", g_totalUserCount);
-			enter_game(user_id, packet->name);
-		}
-
-
-		//closesocket(g_clients[user_id].m_socket);
 	
 		break;
 	}
@@ -1123,7 +1140,7 @@ void disconnect(int user_id)
 
 	closesocket(g_clients[user_id].m_socket);
 
-	for (int i = 0; i < NPC_ID_START; ++i)
+	for (int i = 0; i < g_totalUserCount; ++i)
 	{
 		CLIENT& cl = g_clients[i];
 		if (cl.m_id == user_id) continue;

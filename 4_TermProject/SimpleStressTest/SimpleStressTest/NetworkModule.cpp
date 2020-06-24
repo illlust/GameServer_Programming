@@ -167,11 +167,8 @@ void ProcessPacket(int ci, unsigned char packet[])
 	}
 	break;
 	case S2C_CHAT: break;
-	case S2C_STAT_CHANGE:
-	{
-
-	}
-		break;
+	case S2C_STAT_CHANGE: break;
+	case S2C_LOGIN_FAIL: break;
 	default: MessageBox(hWnd, L"Unknown Packet Type", L"ERROR", 0);
 		while (true);
 	}
@@ -348,7 +345,9 @@ void Test_Thread()
 {
 	while (true) {
 		//Sleep(max(20, global_delay));
-		Adjust_Number_Of_Client();
+
+		if(num_connections <= 300)
+			Adjust_Number_Of_Client();
 
 		for (int i = 0; i < num_connections; ++i) {
 			if (false == g_clients[i].connected) continue;
@@ -377,7 +376,8 @@ void InitializeNetwork()
 	}
 
 	for (auto& cl : client_map) cl = -1;
-	num_connections = 0;
+	num_connections = 1;
+	//num_connections = 0;
 	last_connect_time = high_resolution_clock::now();
 
 	WSADATA	wsadata;

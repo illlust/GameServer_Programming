@@ -123,7 +123,12 @@
   <ItemGroup>
     <Image Include="chess2.png" />
     <Image Include="chessmap.bmp" />
+    <Image Include="pacmanAttack.png" />
+    <Image Include="player_Attack.png" />
+    <Image Include="resize.png" />
     <Image Include="mapTile.bmp" />
+    <Image Include="pacman.png" />
+    <Image Include="player.png" />
   </ItemGroup>
   <ItemGroup>
     <Font Include="cour.ttf" />

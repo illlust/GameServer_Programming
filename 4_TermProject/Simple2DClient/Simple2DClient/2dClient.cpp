@@ -17,6 +17,7 @@ sf::TcpSocket g_socket;
 constexpr auto SCREEN_WIDTH = 20;
 constexpr auto SCREEN_HEIGHT = 20;
 
+//constexpr auto TILE_WIDTH = 31;
 constexpr auto TILE_WIDTH = 65;
 constexpr auto WINDOW_WIDTH = TILE_WIDTH * SCREEN_WIDTH / 2 + 10;   // size of window
 constexpr auto WINDOW_HEIGHT = TILE_WIDTH * SCREEN_WIDTH / 2 + 100;
@@ -29,6 +30,8 @@ constexpr auto BUF_SIZE = 200;
 int g_left_x;
 int g_top_y;
 int g_myid;
+
+bool g_playerAttackFlag = false;
 
 sf::RenderWindow* g_window;
 sf::Font g_font;
@@ -45,7 +48,6 @@ sf::RectangleShape rectangle_EXP;
 class OBJECT {
 private:
 	bool m_showing;
-	sf::Sprite m_sprite;
 
 	char m_mess[MAX_STR_LEN];
 	high_resolution_clock::time_point m_time_out;
@@ -60,6 +62,7 @@ private:
 	sf::CircleShape circle_levelBox;
 
 public:
+	sf::Sprite m_sprite;
 	sf::Text m_exp;
 	int m_x, m_y;
 	int m_id;
@@ -102,13 +105,23 @@ public:
 		m_x = x;
 		m_y = y;
 	}
-	void draw() {
+	void draw(bool isPlayer) {
 		
 		if (false == m_showing) return;
 		float rx = (m_x - g_left_x) * 65.0f + 8;
 		float ry = (m_y - g_top_y) * 65.0f + 8;
 		
-		m_sprite.setPosition(rx, ry);
+
+		if (isPlayer)
+		{
+			m_sprite.setPosition(rx-5, ry-20);
+			m_sprite.setScale(2.5, 2.5);
+		}
+		else
+		{
+			m_sprite.setPosition(rx, ry);
+			m_sprite.setScale(2, 2);
+		}
 		g_window->draw(m_sprite);
 
 		m_name.setPosition(rx , ry - 65);
@@ -124,24 +137,6 @@ public:
 
 		m_level.setPosition(rx - 40, ry - 25);
 		g_window->draw(m_level);
-
-		//exp
-		//rectangle_EXPbox.setPosition(sf::Vector2f(100, WINDOW_HEIGHT + 550));
-		//rectangle_EXPbox.setOutlineThickness(3.0f);
-		//rectangle_EXPbox.setOutlineColor(sf::Color::White);
-		//rectangle_EXPbox.setFillColor(sf::Color::Black);
-		//rectangle_EXPbox.setSize(sf::Vector2f(WINDOW_WIDTH + 500, 20));
-		//g_window->draw(rectangle_EXPbox);
-
-		//rectangle_EXP.setPosition(sf::Vector2f(100, WINDOW_HEIGHT + 550));
-		//rectangle_EXP.setFillColor(sf::Color::Blue);
-		//rectangle_EXP.setSize(sf::Vector2f(exp, 20));
-		//g_window->draw(rectangle_EXP);
-
-		////total exp level * level * 100 
-
-		//m_exp.setPosition(10, WINDOW_HEIGHT + 530);
-		//g_window->draw(m_exp);
 
 		//hp
 		rectangle_HPbox.setPosition(sf::Vector2f(rx, ry - 25));
@@ -183,6 +178,29 @@ public:
 			g_window->draw(m_responText);
 		}
 	}
+
+	void drawAttack(bool isPlayer)
+	{
+		if (false == m_showing) return;
+		float rx = (m_x - g_left_x) * 65.0f + 8;
+		float ry = (m_y - g_top_y) * 65.0f + 8;
+
+		if (isPlayer)
+		{
+			m_sprite.setPosition(50, 50 );
+			m_sprite.setScale(500, 500);
+			g_window->draw(m_sprite);
+		}
+		else
+		{
+			m_sprite.setPosition(rx, ry);
+			m_sprite.setScale(2, 2);
+			g_window->draw(m_sprite);
+		}
+
+		//hide();
+	}
+
 	void set_name(char str[]) {
 		m_name.setFont(g_font);
 		m_name.setString(str);
@@ -258,7 +276,14 @@ OBJECT blocked_tile;
 OBJECT blank_tile;
 
 sf::Texture* board;
-sf::Texture* pieces;
+sf::Texture* pacman_pieces;
+sf::Texture* player_pieces;
+
+sf::Texture* pacman_attack_pieces;
+sf::Texture* player_attack_pieces;
+
+OBJECT pacman_attack_obj;
+OBJECT player_attack_obj;
 
 char g_Map[WORLD_HEIGHT][WORLD_WIDTH];
 
@@ -291,24 +316,41 @@ void init_map()
 void client_initialize()
 {
 	board = new sf::Texture;
-	pieces = new sf::Texture;
+	pacman_pieces = new sf::Texture;
+	player_pieces = new sf::Texture;
+	pacman_attack_pieces = new sf::Texture;
+	player_attack_pieces = new sf::Texture;
 	if (false == g_font.loadFromFile("NanumGothicBold.ttf")) {
 		cout << "Font Loading Error!\n";
 		while (true);
 	}
 	board->loadFromFile("mapTile.bmp");
 	//board->loadFromFile("chessmap.bmp");
-	pieces->loadFromFile("chess2.png");
-	blank_tile = OBJECT{ *board, 0, 0, TILE_WIDTH, TILE_WIDTH };
-	blocked_tile = OBJECT{ *board, 65, 0, TILE_WIDTH, TILE_WIDTH };
-	avatar = OBJECT{ *pieces, 128, 0, 64, 64 };
+	pacman_pieces->loadFromFile("pacman.png");
+	player_pieces->loadFromFile("resize.png");
+	//player_pieces->loadFromFile("player.png");
+	blank_tile = OBJECT{ *board, 0, 0, 65, 65 };
+	blocked_tile = OBJECT{ *board, 65, 0, 65, 65 };
+
+	avatar = OBJECT{ *player_pieces, 0, 0, 31, 31 };
+
 	avatar.move(4, 4);
+
+	pacman_attack_pieces->loadFromFile("pacmanAttack.png");
+	pacman_attack_obj = OBJECT{ *pacman_attack_pieces ,0,0, 130, 210 };
+
+	player_attack_pieces->loadFromFile("player_Attack.png");
+	player_attack_obj = OBJECT{ *player_attack_pieces ,0,0, 192, 178 };
+
 }
 
 void client_finish()
 {
 	delete board;
-	delete pieces;
+	delete player_pieces;
+	delete pacman_pieces;
+	delete pacman_attack_pieces;
+	delete player_attack_pieces;
 }
 
 void ProcessPacket(char* ptr)
@@ -340,13 +382,17 @@ void ProcessPacket(char* ptr)
 		}
 		else {
 			if (id < NPC_ID_START)
-				npcs[id] = OBJECT{ *pieces, 64, 0, 64, 64 };
+				npcs[id] = OBJECT{ *player_pieces, 0, 0, 31, 31 };
 			else
 			{
-				if(my_packet->npcCharacterType == NPC_WAR)
-					npcs[id] = OBJECT{ *pieces, 0, 0, 64, 64 };
-				else
-					npcs[id] = OBJECT{ *pieces, 192, 0, 64, 64 };
+				if(my_packet->npcCharacterType == NPC_PEACE && my_packet->npcMoveType == NPC_FIX) //»¡°­
+					npcs[id] = OBJECT{ *pacman_pieces, 0, 31 * 0, 31, 31 };
+				else if (my_packet->npcCharacterType == NPC_PEACE && my_packet->npcMoveType == NPC_RANDOM_MOVE) //ÇÎÅ©
+					npcs[id] = OBJECT{ *pacman_pieces, 0, 31 * 1, 31, 31 };
+				else if (my_packet->npcCharacterType == NPC_WAR && my_packet->npcMoveType == NPC_FIX) //ÆÄ¶û
+					npcs[id] = OBJECT{ *pacman_pieces, 0, 31 * 2, 31, 31 };
+				else if (my_packet->npcCharacterType == NPC_WAR && my_packet->npcMoveType == NPC_RANDOM_MOVE) //³ë¶û
+					npcs[id] = OBJECT{ *pacman_pieces, 0, 31 * 3, 31, 31 };
 			}
 			npcs[id].npcCharacterType = my_packet->npcCharacterType;
 			npcs[id].npcMoveType = my_packet->npcMoveType;
@@ -366,10 +412,14 @@ void ProcessPacket(char* ptr)
 			avatar.move(my_packet->x, my_packet->y);
 			g_left_x = my_packet->x - (SCREEN_WIDTH / 2);
 			g_top_y = my_packet->y - (SCREEN_HEIGHT / 2);
+			avatar.show();
 		}
 		else {
 			if (0 != npcs.count(other_id))
+			{
 				npcs[other_id].move(my_packet->x, my_packet->y);
+				npcs[other_id].show();
+			}
 		}
 	}
 	break;
@@ -539,9 +589,9 @@ void client_main()
 			//}
 		}
 	}
-	avatar.draw();
+	avatar.draw(true);
 	//	for (auto &pl : players) pl.draw();
-	for (auto& npc : npcs) npc.second.draw();
+	for (auto& npc : npcs) npc.second.draw(false);
 	sf::Text text;
 	text.setFont(g_font);
 	char buf[100];
@@ -577,6 +627,11 @@ void client_main()
 	avatar.m_exp.setPosition(10, WINDOW_HEIGHT + 530);
 	g_window->draw(avatar.m_exp);
 
+	if (g_playerAttackFlag)
+	{
+		player_attack_obj.show();
+		player_attack_obj.drawAttack(true);
+	}
 }
 	
 
@@ -668,6 +723,11 @@ int main()
 					break;
 				case sf::Keyboard::Space:
 					send_attack_packet();
+					//player_attack_obj.show();
+					g_playerAttackFlag = true;
+					//pacman_attack_obj.show();
+					//player_attack_obj.drawAttack(true);
+					//pacman_attack_obj.drawAttack(true);
 					break;
 				case sf::Keyboard::Escape:
 					window.close();

@@ -32,6 +32,21 @@
     <Image Include="mapTile.bmp">
       <Filter>리소스 파일</Filter>
     </Image>
+    <Image Include="pacman.png">
+      <Filter>리소스 파일</Filter>
+    </Image>
+    <Image Include="player.png">
+      <Filter>리소스 파일</Filter>
+    </Image>
+    <Image Include="resize.png">
+      <Filter>리소스 파일</Filter>
+    </Image>
+    <Image Include="pacmanAttack.png">
+      <Filter>리소스 파일</Filter>
+    </Image>
+    <Image Include="player_Attack.png">
+      <Filter>리소스 파일</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
     <Font Include="cour.ttf">
