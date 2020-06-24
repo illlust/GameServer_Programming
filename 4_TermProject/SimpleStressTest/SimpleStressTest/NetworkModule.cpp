@@ -166,6 +166,12 @@ void ProcessPacket(int ci, unsigned char packet[])
 		//SendPacket(my_id, &t_packet);
 	}
 	break;
+	case S2C_CHAT: break;
+	case S2C_STAT_CHANGE:
+	{
+
+	}
+		break;
 	default: MessageBox(hWnd, L"Unknown Packet Type", L"ERROR", 0);
 		while (true);
 	}
@@ -317,7 +323,7 @@ void Adjust_Number_Of_Client()
 	cs_packet_login l_packet;
 
 	int temp = num_connections;
-	sprintf_s(l_packet.name, "%d", temp);
+	sprintf_s(l_packet.name, "USER%d", temp);
 	l_packet.size = sizeof(l_packet);
 	l_packet.type = C2S_LOGIN;
 	SendPacket(num_connections, &l_packet);

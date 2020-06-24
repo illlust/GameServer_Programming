@@ -10,6 +10,7 @@
 #include <atomic>
 #include <chrono>
 #include <queue>
+#include <atlstr.h>
 
 #include "CDataBase.h"
 #include "protocol.h"
@@ -309,6 +310,98 @@ void UpdateData(int keyid, int x, int y, int level, int exp, int hp)
 		SQLFreeHandle(SQL_HANDLE_ENV, henv);
 	}
 }
+
+wchar_t* ConverCtoWC(char* str)
+{
+	//wchar_t형 변수 선언
+	wchar_t* pStr;
+	//멀티 바이트 크기 계산 길이 반환
+	int strSize = MultiByteToWideChar(CP_ACP, 0, str, -1, NULL, NULL);
+
+	//wchar_t 메모리 할당
+	pStr = new WCHAR[strSize];
+	//형 변환
+	MultiByteToWideChar(CP_ACP, 0, str, strlen(str) + 1, pStr, strSize);
+
+	return pStr;
+}
+
+void InsertData(int keyid, char* name, int x, int y, int level, int exp, int hp)
+{
+	SQLHENV henv;		// 데이터베이스에 연결할때 사옹하는 핸들
+	SQLHDBC hdbc;
+	SQLHSTMT hstmt = 0; // sql명령어를 전달하는 핸들
+	SQLRETURN retcode;  // sql명령어를 날릴때 성공유무를 리턴해줌
+	SQLWCHAR query[1024];
+
+	CString str = name;
+
+	wsprintf(query, L"INSERT INTO Table_3 (user_name, user_x, user_y, user_EXP, user_HP, user_LEVEL, user_id) VALUES (\'%s\', %d, %d, %d, %d, %d, %d)",
+		str, x, y, exp, hp, level, keyid);
+
+
+
+
+	setlocale(LC_ALL, "korean"); // 오류코드 한글로 변환
+	//std::wcout.imbue(std::locale("korean"));
+
+	// Allocate environment handle  
+	retcode = SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &henv);
+
+	if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO) {
+		retcode = SQLSetEnvAttr(henv, SQL_ATTR_ODBC_VERSION, (SQLPOINTER*)SQL_OV_ODBC3, 0); // ODBC로 연결
+
+		// Allocate connection handle  
+		if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO) {
+			retcode = SQLAllocHandle(SQL_HANDLE_DBC, henv, &hdbc);
+
+			// Set login timeout to 5 seconds  
+			if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO) {
+				SQLSetConnectAttr(hdbc, SQL_LOGIN_TIMEOUT, (SQLPOINTER)5, 0); // 5초간 연결 5초넘어가면 타임아웃
+
+				// Connect to data source  
+				retcode = SQLConnect(hdbc, (SQLWCHAR*)L"game_db_odbc", SQL_NTS, (SQLWCHAR*)NULL, 0, NULL, 0);
+				//retcode = SQLConnect(hdbc, (SQLWCHAR*)L"jys_gameserver", SQL_NTS, (SQLWCHAR*)NULL, SQL_NTS, NULL, SQL_NTS);
+
+				// Allocate statement handle  
+				if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO) {
+					retcode = SQLAllocHandle(SQL_HANDLE_STMT, hdbc, &hstmt); // SQL명령어 전달할 한들
+
+					retcode = SQLExecDirect(hstmt, (SQLWCHAR *)query, SQL_NTS); // 쿼리문
+					//retcode = SQLExecDirect(hstmt, (SQLWCHAR *)L"EXEC select_highlevel 90", SQL_NTS); // 90레벨 이상만 가져오기
+
+					if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO) {
+						printf("DataBase insert success \n user_x = %d, user_y = %d, user_EXP = %d, user_HP = %d, user_LEVEL = %d WHERE user_id = %d",
+							x, y, exp, hp, level, keyid);
+
+						DATABASE db;
+						db.x = x;
+						db.y = y;
+						db.level = level;
+						db.exp = exp;
+						db.HP = hp;
+
+						g_dbData.push_back(db);
+					}
+
+
+					// Process data  
+					if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO) {
+						SQLCancel(hstmt); // 핸들캔슬
+						SQLFreeHandle(SQL_HANDLE_STMT, hstmt);
+					}
+
+					SQLDisconnect(hdbc);
+				}
+
+				SQLFreeHandle(SQL_HANDLE_DBC, hdbc);
+			}
+		}
+		SQLFreeHandle(SQL_HANDLE_ENV, henv);
+	}
+
+}
+
 void add_timer(int obj_id, ENUMOP op_type, int duration)
 {
 	timer_lock.lock();
@@ -961,32 +1054,52 @@ void process_packet(int user_id, char* buf)
 	{	
 		cs_packet_login *packet = reinterpret_cast<cs_packet_login*>(buf);
 		//cout << "<" << packet->name << ">" << endl;
-		
-		//if (user_id >= NPC_ID_START)
-		//{
-		//	enter_game(user_id, packet->name);
-		//	break;
-		//}
-		//else
+
+		for (auto dblist : g_dbData)
 		{
-			for (auto dblist : g_dbData)
+			if (strcmp(packet->name, dblist.Name) == 0)
 			{
-				if (strcmp(packet->name, dblist.Name) == 0)
-				{
-					g_clients[user_id].x = dblist.x;
-					g_clients[user_id].y = dblist.y;
-					g_clients[user_id].m_db = dblist.id;
-					g_clients[user_id].exp = dblist.exp;
-					g_clients[user_id].hp = dblist.HP;
-					g_clients[user_id].level = dblist.level;
-					memcpy(g_clients[user_id].m_name, packet->name, 10);
-					enter_game(user_id, packet->name);
-					return;
-				}
+				g_clients[user_id].x = dblist.x;
+				g_clients[user_id].y = dblist.y;
+				g_clients[user_id].m_db = dblist.id;
+				g_clients[user_id].exp = dblist.exp;
+				g_clients[user_id].hp = dblist.HP;
+				g_clients[user_id].level = dblist.level;
+				memcpy(g_clients[user_id].m_name, packet->name, 10);
+				enter_game(user_id, packet->name);
+				return;
+			}
+		}
+
+		//id가 없다면 새로 생성 
+		//if (strcmp(packet->name, "") == 0)
+		{
+			int x;
+			int y;
+			while (true)
+			{
+				x = rand() % WORLD_WIDTH;
+				y = rand() % WORLD_HEIGHT;
+
+				if (g_Map[y][x].type == eBLANK)
+					break;
 			}
 
-			closesocket(g_clients[user_id].m_socket);
+			g_totalUserCount++;
+			InsertData(g_totalUserCount, packet->name, x, y, 1, 0, 100);
+			g_clients[user_id].x = x;
+			g_clients[user_id].y = y;
+			g_clients[user_id].m_db = g_totalUserCount;
+			g_clients[user_id].exp = 0;
+			g_clients[user_id].hp = 100;
+			g_clients[user_id].level = 1;
+			sprintf_s(g_clients[user_id].m_name, "USER%d", g_totalUserCount);
+			enter_game(user_id, packet->name);
 		}
+
+
+		//closesocket(g_clients[user_id].m_socket);
+	
 		break;
 	}
 	case C2S_MOVE:
@@ -1252,7 +1365,7 @@ void worker_Thread()
 			char mess[100];
 			sprintf_s(mess, "NPC %d -> attack -> USER %d (-%d)", user_id, g_clients[target_id].m_id, g_clients[user_id].level);
 			
-			for (int i = 0; i < 5; ++i)
+			for (int i = 0; i < g_totalUserCount; ++i)
 				send_chat_packet(i, target_id, mess, 1);
 
 			bool isdie = isPlayerDie(target_id);
@@ -1264,7 +1377,7 @@ void worker_Thread()
 				g_clients[target_id].hp = 100;
 				do_move(g_clients[target_id].m_id, 0, true, 401, 400);
 
-				for (int i = 0; i < 5; ++i)
+				for (int i = 0; i < g_totalUserCount; ++i)
 					send_stat_change_packet(i, g_clients[target_id].m_id);
 				
 				char mess1[100];
@@ -1275,7 +1388,7 @@ void worker_Thread()
 			}
 			else if (!isdie)
 			{
-				for (int i = 0; i < 5; ++i)
+				for (int i = 0; i < g_totalUserCount; ++i)
 					send_stat_change_packet(i, g_clients[target_id].m_id);
 			}
 		}
