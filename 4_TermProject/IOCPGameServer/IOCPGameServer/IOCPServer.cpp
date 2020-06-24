@@ -190,16 +190,11 @@ void LoadData() {
 							}
 							if (retcode == SQL_SUCCESS || retcode == SQL_SUCCESS_WITH_INFO)
 							{
-								wprintf(L"ID :%d  NICK : %s \t(%d,%d)\t LEV : %d\t EXP : %d\t HP : %d\n", dUser_id, szUser_Name, dUser_x, dUser_y, dUser_LEVEL, dUser_EXP, dUser_HP);
+								wprintf(L"ID :%d  NICK : \'%s\' \t(%d,%d)\t LEV : %d\t EXP : %d\t HP : %d\n", dUser_id, szUser_Name, dUser_x, dUser_y, dUser_LEVEL, dUser_EXP, dUser_HP);
 								char *temp;
 								int strSize = WideCharToMultiByte(CP_ACP, 0, szUser_Name, -1, NULL, 0, NULL, NULL);
 								temp = new char[11];
 								WideCharToMultiByte(CP_ACP, 0, szUser_Name, -1, temp, strSize, 0, 0);
-								//if (isdigit(temp[strlen(temp) - 1]) == 0) 
-								{
-									//cout << "문자열공백제거\n";
-									temp[strlen(temp) - 4] = '\0';
-								}
 
 								DATABASE newDB;
 								newDB.id = dUser_id;
@@ -311,21 +306,6 @@ void UpdateData(int keyid, int x, int y, int level, int exp, int hp)
 	}
 }
 
-wchar_t* ConverCtoWC(char* str)
-{
-	//wchar_t형 변수 선언
-	wchar_t* pStr;
-	//멀티 바이트 크기 계산 길이 반환
-	int strSize = MultiByteToWideChar(CP_ACP, 0, str, -1, NULL, NULL);
-
-	//wchar_t 메모리 할당
-	pStr = new WCHAR[strSize];
-	//형 변환
-	MultiByteToWideChar(CP_ACP, 0, str, strlen(str) + 1, pStr, strSize);
-
-	return pStr;
-}
-
 void InsertData(int keyid, char* name, int x, int y, int level, int exp, int hp)
 {
 	SQLHENV henv;		// 데이터베이스에 연결할때 사옹하는 핸들
@@ -380,7 +360,9 @@ void InsertData(int keyid, char* name, int x, int y, int level, int exp, int hp)
 						db.level = level;
 						db.exp = exp;
 						db.HP = hp;
-
+						db.id = keyid;
+						memset(db.Name, 0, sizeof(db.Name));
+						memcpy(db.Name, name, strlen(name));
 						g_dbData.push_back(db);
 					}
 
@@ -1053,10 +1035,10 @@ void process_packet(int user_id, char* buf)
 	case C2S_LOGIN:
 	{	
 		cs_packet_login *packet = reinterpret_cast<cs_packet_login*>(buf);
-		//cout << "<" << packet->name << ">" << endl;
 
 		for (auto dblist : g_dbData)
 		{
+			cout << "<" << packet->name << ">, <" << dblist.Name <<">"<<  endl;
 			if (strcmp(packet->name, dblist.Name) == 0)
 			{
 				g_clients[user_id].x = dblist.x;

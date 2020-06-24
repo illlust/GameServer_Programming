@@ -551,7 +551,7 @@ void client_main()
 	text.setString(buf);
 	g_window->draw(text);
 
-	sprintf_s(buf, "LV : %d ## EXP : %d/%d ## HP : %d/100", avatar.level, avatar.exp, avatar.level * avatar.level * 100, avatar.hp);
+	sprintf_s(buf, "LV : %d ## EXP : %d/%d ## HP : %d/100", avatar.level, avatar.exp, (int)(100 * pow(2, (avatar.level - 1))), avatar.hp);
 	text.setString(buf);
 	text.setPosition(300, -50);
 	text.setCharacterSize(40);
@@ -569,7 +569,7 @@ void client_main()
 
 	rectangle_EXP.setPosition(sf::Vector2f(100, WINDOW_HEIGHT + 550));
 	rectangle_EXP.setFillColor(sf::Color::Blue);
-	rectangle_EXP.setSize(sf::Vector2f((avatar.exp * WINDOW_WIDTH + 500) / (int)(100 * pow(2, (avatar.level - 1))), 25));
+	rectangle_EXP.setSize(sf::Vector2f((avatar.exp * (WINDOW_WIDTH + 500)) / (int)(100 * pow(2, (avatar.level - 1))), 25));
 	g_window->draw(rectangle_EXP);
 
 	//total exp level * level * 100 
