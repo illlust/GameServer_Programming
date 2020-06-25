@@ -93,6 +93,7 @@ struct CLIENT
 	int** mapData;
 	CAStar pathfind;
 	CLIENT* target = nullptr;
+	mutex path_l;
 
 	unsigned  m_move_time;
 	unsigned  m_attack_time;
@@ -635,8 +636,10 @@ void random_move_npc(int npc_id)
 
 	if (g_clients[npc_id].target != nullptr)
 	{
+		g_clients[npc_id].path_l.lock();
 		bool ret = g_clients[npc_id].pathfind.searchLoad(g_clients[npc_id].mapData,
 			x, y, g_clients[npc_id].target->x, g_clients[npc_id].target->y);
+		g_clients[npc_id].path_l.unlock();
 
 		if (ret)
 		{
@@ -655,9 +658,12 @@ void random_move_npc(int npc_id)
 		}
 		else
 		{
-			char mess[100];
-			sprintf_s(mess, "WHERE ARE YOU !");
-			send_chat_packet(g_clients[npc_id].target->m_id, npc_id, mess, 0);
+			if (g_clients[npc_id].target != nullptr)
+			{
+				char mess[100];
+				sprintf_s(mess, "WHERE ARE YOU !");
+				send_chat_packet(g_clients[npc_id].target->m_id, npc_id, mess, 0);
+			}
 		}
 	}
 	else
@@ -1070,32 +1076,32 @@ void process_packet(int user_id, char* buf)
 		}
 
 		//id가 없다면 새로 생성 
-		send_login_fail_packet(user_id);
-		closesocket(g_clients[user_id].m_socket);
+		//send_login_fail_packet(user_id);
+		//closesocket(g_clients[user_id].m_socket);
 		
-		//
-		//int x;
-		//int y;
-		//while (true)
-		//{
-		//	x = rand() % WORLD_WIDTH;
-		//	y = rand() % WORLD_HEIGHT;
-		//
-		//	if (g_Map[y][x].type == eBLANK)
-		//		break;
-		//}
-		//
-		//g_totalUserCount++;
-		//InsertData(g_totalUserCount, packet->name, x, y, 1, 0, 100);
-		//g_clients[user_id].x = x;
-		//g_clients[user_id].y = y;
-		//g_clients[user_id].m_db = g_totalUserCount;
-		//g_clients[user_id].exp = 0;
-		//g_clients[user_id].hp = 100;
-		//g_clients[user_id].level = 1;
-		//memcpy(g_clients[user_id].m_name, packet->name, sizeof(packet->name));
-		//enter_game(user_id, packet->name);
-		//
+		
+		int x;
+		int y;
+		while (true)
+		{
+			x = rand() % 200; //WORLD_WIDTH;
+			y = rand() % 200; //WORLD_HEIGHT;
+		
+			if (g_Map[y][x].type == eBLANK)
+				break;
+		}
+		
+		g_totalUserCount++;
+		InsertData(g_totalUserCount, packet->name, x, y, 1, 0, 100);
+		g_clients[user_id].x = x;
+		g_clients[user_id].y = y;
+		g_clients[user_id].m_db = g_totalUserCount;
+		g_clients[user_id].exp = 0;
+		g_clients[user_id].hp = 100;
+		g_clients[user_id].level = 1;
+		memcpy(g_clients[user_id].m_name, packet->name, sizeof(packet->name));
+		enter_game(user_id, packet->name);
+		
 
 
 	
@@ -1364,8 +1370,8 @@ void worker_Thread()
 			char mess[100];
 			sprintf_s(mess, "NPC %d -> attack -> USER %d (-%d)", user_id, g_clients[target_id].m_id, g_clients[user_id].level);
 			
-			for (int i = 0; i < g_totalUserCount; ++i)
-				send_chat_packet(i, target_id, mess, 1);
+			//for (int i = 0; i < g_totalUserCount; ++i)
+				send_chat_packet(target_id, target_id, mess, 1);
 
 			bool isdie = isPlayerDie(target_id);
 

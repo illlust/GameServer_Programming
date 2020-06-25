@@ -338,7 +338,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 		//¡à¡à¡à
 		//¡à¡à¡á
 		//¡à¡à¡à
-		if (x + 1 <= WORLD_WIDTH)
+		if (x + 1 < WORLD_WIDTH)
 		{
 			if (g_Map[y][x + 1].type != eBLOCKED)
 			{
