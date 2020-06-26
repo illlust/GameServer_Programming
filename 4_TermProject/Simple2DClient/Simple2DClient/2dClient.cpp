@@ -8,6 +8,8 @@
 using namespace std;
 using namespace chrono;
 
+#pragma comment (lib, "winmm.lib")
+
 #include "..\..\IOCPGameServer\IOCPGameServer\protocol.h"
 
 //#pragma comment(lib, "sfml_network.lib")
@@ -31,7 +33,6 @@ int g_left_x;
 int g_top_y;
 int g_myid;
 
-bool g_playerAttackFlag = false;
 
 sf::RenderWindow* g_window;
 sf::Font g_font;
@@ -63,6 +64,8 @@ private:
 
 public:
 	sf::Sprite m_sprite;
+	sf::Sprite m_sprite_attack;
+	sf::Sprite m_sprite_damage;
 	sf::Text m_exp;
 	int m_x, m_y;
 	int m_id;
@@ -71,6 +74,15 @@ public:
 	int exp;
 	short hp;
 
+	int motion_index = 0;
+	int direction = 1;
+
+	bool attackFlag = false;
+	bool damageFlag = false;
+
+	int attack_index = 0;
+	int damage_index = 0;
+
 	bool npcCharacterType; //0-peace / 1-war
 	bool npcMoveType; //0-고정 / 1-로밍
 
@@ -78,6 +90,7 @@ public:
 		m_showing = false;
 		m_sprite.setTexture(t);
 		m_sprite.setTextureRect(sf::IntRect(x, y, x2, y2));
+
 		m_time_out = high_resolution_clock::now();
 	}
 	OBJECT() {
@@ -93,6 +106,20 @@ public:
 		m_showing = false;
 	}
 
+	void setMoveMotion(sf::Texture& t)
+	{
+		m_sprite.setTexture(t);
+	}
+	void setAttackMotion(sf::Texture& t, int x, int y, int x2, int y2)
+	{
+		m_sprite_attack.setTexture(t);
+		m_sprite_attack.setTextureRect(sf::IntRect(x, y, x2, y2));
+	}
+	void setDamageMotion(sf::Texture& t, int x, int y, int x2, int y2)
+	{
+		m_sprite_damage.setTexture(t);
+		m_sprite_damage.setTextureRect(sf::IntRect(x, y, x2, y2));
+	}
 	void a_move(int x, int y) {
 		m_sprite.setPosition((float)x, (float)y);
 	}
@@ -106,16 +133,20 @@ public:
 		m_y = y;
 	}
 	void draw(bool isPlayer) {
-		
 		if (false == m_showing) return;
 		float rx = (m_x - g_left_x) * 65.0f + 8;
 		float ry = (m_y - g_top_y) * 65.0f + 8;
 		
-
+		//	Body
 		if (isPlayer)
 		{
-			m_sprite.setPosition(rx-5, ry-20);
-			m_sprite.setScale(2.5, 2.5);
+			int x = motion_index * 31;
+			int y = direction * 31;
+
+			m_sprite.setTextureRect(sf::IntRect(x, y, 31, 31));
+
+			m_sprite.setPosition(rx - 25, ry - 50);
+			m_sprite.setScale(3.5, 3.5);
 		}
 		else
 		{
@@ -124,36 +155,81 @@ public:
 		}
 		g_window->draw(m_sprite);
 
-		m_name.setPosition(rx , ry - 65);
+		//	Attack Effect
+		if (attackFlag)
+		{
+			int x = (attack_index / 3) * 96;
+
+			m_sprite_attack.setTextureRect(sf::IntRect(x, 0, 96, 96));
+			m_sprite_attack.setScale(1, 1);
+
+			m_sprite_attack.setPosition(rx - 10, ry - 100);
+			g_window->draw(m_sprite_attack);
+
+			m_sprite_attack.setPosition(rx - 10, ry + 50);
+			g_window->draw(m_sprite_attack);
+
+			m_sprite_attack.setPosition(rx - 70, ry - 25);
+			g_window->draw(m_sprite_attack);
+
+			m_sprite_attack.setPosition(rx + 50, ry - 25);
+			g_window->draw(m_sprite_attack);
+
+			attack_index += 1;
+			if (attack_index == 9)
+			{
+				attack_index = 0;
+				attackFlag = false;
+			}
+		}
+
+		if (damageFlag)
+		{
+			int x = (damage_index % 5) * 130;
+
+			m_sprite_damage.setTextureRect(sf::IntRect(x, 0, 130, 210));
+			m_sprite_damage.setScale(0.9, 0.9);
+
+			m_sprite_damage.setPosition(rx - 35, ry - 120);
+			g_window->draw(m_sprite_damage);
+
+			damage_index += 1;
+			if (damage_index == 5)
+			{
+				damage_index = 0;
+				damageFlag = false;
+			}
+		}
+
+		m_name.setPosition(rx , ry - 90);
 		g_window->draw(m_name);
 		
 		//level
-		circle_levelBox.setPosition(sf::Vector2f(rx - 50, ry - 25));
+		circle_levelBox.setPosition(sf::Vector2f(rx - 50, ry - 50));
 		circle_levelBox.setOutlineThickness(3.0f);
 		circle_levelBox.setOutlineColor(sf::Color::White);
 		circle_levelBox.setFillColor(sf::Color::Black);
 		circle_levelBox.setRadius(18);
 		g_window->draw(circle_levelBox);
 
-		m_level.setPosition(rx - 40, ry - 25);
+		m_level.setPosition(rx - 40, ry - 50);
 		g_window->draw(m_level);
 
 		//hp
-		rectangle_HPbox.setPosition(sf::Vector2f(rx, ry - 25));
+		rectangle_HPbox.setPosition(sf::Vector2f(rx, ry - 50));
 		rectangle_HPbox.setOutlineThickness(3.0f);
 		rectangle_HPbox.setOutlineColor(sf::Color::White);
 		rectangle_HPbox.setFillColor(sf::Color::Red);
 		rectangle_HPbox.setSize(sf::Vector2f(100, 30));
 		g_window->draw(rectangle_HPbox);
 
-		rectangle_HP.setPosition(sf::Vector2f(rx, ry - 25));
+		rectangle_HP.setPosition(sf::Vector2f(rx, ry - 50));
 		rectangle_HP.setFillColor(sf::Color::Green);
 		rectangle_HP.setSize(sf::Vector2f(hp, 30));
 		g_window->draw(rectangle_HP);
 		
-		m_hp.setPosition(rx + 10, ry - 25);
+		m_hp.setPosition(rx + 10, ry - 50);
 		g_window->draw(m_hp);
-
 
 
 		if (high_resolution_clock::now() < m_time_out) {
@@ -177,28 +253,8 @@ public:
 			m_responText.setPosition(200, WINDOW_HEIGHT - 300);
 			g_window->draw(m_responText);
 		}
-	}
 
-	void drawAttack(bool isPlayer)
-	{
-		if (false == m_showing) return;
-		float rx = (m_x - g_left_x) * 65.0f + 8;
-		float ry = (m_y - g_top_y) * 65.0f + 8;
-
-		if (isPlayer)
-		{
-			m_sprite.setPosition(50, 50 );
-			m_sprite.setScale(500, 500);
-			g_window->draw(m_sprite);
-		}
-		else
-		{
-			m_sprite.setPosition(rx, ry);
-			m_sprite.setScale(2, 2);
-			g_window->draw(m_sprite);
-		}
-
-		//hide();
+		motion_index = (motion_index + 1) % 10;
 	}
 
 	void set_name(char str[]) {
@@ -282,9 +338,6 @@ sf::Texture* player_pieces;
 sf::Texture* pacman_attack_pieces;
 sf::Texture* player_attack_pieces;
 
-OBJECT pacman_attack_obj;
-OBJECT player_attack_obj;
-
 char g_Map[WORLD_HEIGHT][WORLD_WIDTH];
 
 void init_map()
@@ -332,16 +385,20 @@ void client_initialize()
 	blank_tile = OBJECT{ *board, 0, 0, 65, 65 };
 	blocked_tile = OBJECT{ *board, 65, 0, 65, 65 };
 
-	avatar = OBJECT{ *player_pieces, 0, 0, 31, 31 };
-
-	avatar.move(4, 4);
+	//avatar = OBJECT{ *player_pieces, 0, 0, 31, 31 };
+	avatar = OBJECT();
+	
 
 	pacman_attack_pieces->loadFromFile("pacmanAttack.png");
-	pacman_attack_obj = OBJECT{ *pacman_attack_pieces ,0,0, 130, 210 };
+	//pacman_attack_obj = OBJECT{ *pacman_attack_pieces ,0,0, 130, 210 };
 
-	player_attack_pieces->loadFromFile("player_Attack.png");
-	player_attack_obj = OBJECT{ *player_attack_pieces ,0,0, 192, 178 };
+	player_attack_pieces->loadFromFile("player_Attack1.png");
 
+	avatar.setMoveMotion(*player_pieces);
+	avatar.setAttackMotion(*player_attack_pieces, 0, 0, 192, 178);
+	avatar.setDamageMotion(*pacman_attack_pieces, 0, 0, 192, 178);
+	
+	avatar.move(4, 4);
 }
 
 void client_finish()
@@ -470,6 +527,8 @@ void ProcessPacket(char* ptr)
 		int id = my_packet->id;
 
 		if (id == g_myid) {
+			if (avatar.hp > my_packet->hp)
+				avatar.damageFlag = true;
 			avatar.hp = my_packet->hp;
 			avatar.level = my_packet->level;
 			avatar.exp = my_packet->exp;
@@ -627,11 +686,9 @@ void client_main()
 	avatar.m_exp.setPosition(10, WINDOW_HEIGHT + 530);
 	g_window->draw(avatar.m_exp);
 
-	if (g_playerAttackFlag)
-	{
-		player_attack_obj.show();
-		player_attack_obj.drawAttack(true);
-	}
+	//if (g_playerAttackFlag)
+	//{
+	//}
 }
 	
 
@@ -699,8 +756,19 @@ int main()
 	view.move(SCREEN_WIDTH * TILE_WIDTH / 4, SCREEN_HEIGHT * TILE_WIDTH / 4);
 	g_window->setView(view);
 
+	DWORD timeTickCount;
+	DWORD dwTick;
+
+	timeTickCount = timeGetTime();
+	dwTick = timeTickCount;
+
 	while (window.isOpen())
 	{
+		dwTick = timeGetTime();
+		if ((dwTick - timeTickCount) < 40) continue;
+
+		timeTickCount = dwTick;
+
 		sf::Event event;
 		while (window.pollEvent(event))
 		{
@@ -711,23 +779,23 @@ int main()
 				switch (event.key.code) {
 				case sf::Keyboard::Left:
 					send_move_packet(D_LEFT);
+					avatar.direction = 2;
 					break;
 				case sf::Keyboard::Right:
 					send_move_packet(D_RIGHT);
+					avatar.direction = 3;
 					break;
 				case sf::Keyboard::Up:
 					send_move_packet(D_UP);
+					avatar.direction = 0;
 					break;
 				case sf::Keyboard::Down:
 					send_move_packet(D_DOWN);
+					avatar.direction = 1;
 					break;
 				case sf::Keyboard::Space:
 					send_attack_packet();
-					//player_attack_obj.show();
-					g_playerAttackFlag = true;
-					//pacman_attack_obj.show();
-					//player_attack_obj.drawAttack(true);
-					//pacman_attack_obj.drawAttack(true);
+					avatar.attackFlag = true;
 					break;
 				case sf::Keyboard::Escape:
 					window.close();

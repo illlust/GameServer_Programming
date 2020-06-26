@@ -731,7 +731,7 @@ void random_move_npc(int npc_id)
 				g_clients[i].m_cLock.unlock();
 				send_enter_packet(i, npc_id);
 
-				if (g_clients[npc_id].target == nullptr)
+				if (g_clients[npc_id].target == nullptr && g_clients[npc_id].npcCharacterType == NPC_WAR)
 				{
 					g_clients[npc_id].target = &g_clients[i];
 					if (g_clients[npc_id].npcMoveType != NPC_RANDOM_MOVE)
@@ -1368,7 +1368,7 @@ void worker_Thread()
 			}
 			g_clients[target_id].hp -= g_clients[user_id].level;
 			char mess[100];
-			sprintf_s(mess, "NPC %d -> attack -> USER %d (-%d)", user_id, g_clients[target_id].m_id, g_clients[user_id].level);
+			sprintf_s(mess, "NPC %d -> attack -> USER %d (-%d)", user_id, target_id, g_clients[user_id].level);
 			
 			//for (int i = 0; i < g_totalUserCount; ++i)
 				send_chat_packet(target_id, target_id, mess, 1);
@@ -1387,7 +1387,7 @@ void worker_Thread()
 				
 				char mess1[100];
 				sprintf_s(mess1, "!!! RESPAWN !!!");
-				send_chat_packet(g_clients[target_id].m_id, g_clients[target_id].m_id,mess1, 2);
+				send_chat_packet(g_clients[target_id].m_id, g_clients[target_id].m_id ,mess1, 2);
 				
 				g_clients[user_id].target = nullptr;
 			}

@@ -346,7 +346,7 @@ void Test_Thread()
 	while (true) {
 		//Sleep(max(20, global_delay));
 
-		if(num_connections <= 510)
+		if(num_connections <= 500)
 			Adjust_Number_Of_Client();
 
 		for (int i = 0; i < num_connections; ++i) {
