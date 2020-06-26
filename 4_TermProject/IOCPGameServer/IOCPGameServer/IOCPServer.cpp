@@ -92,11 +92,16 @@ struct CLIENT
 	
 	int** mapData;
 	CAStar pathfind;
-	CLIENT* target = nullptr;
 	mutex path_l;
+
+	CLIENT* target = nullptr;
+	mutex target_l;
 
 	unsigned  m_move_time;
 	unsigned  m_attack_time;
+
+	//바라보는 방향
+	char direction;
 
 	//high_resolution_clock::time_point m_last_move_time;
 
@@ -454,6 +459,7 @@ void send_move_packet(int user_id, int mover)
 	p.type = S2C_MOVE;
 	p.x = g_clients[mover].x;
 	p.y = g_clients[mover].y;
+	p.direction = g_clients[mover].direction;
 	p.move_time = g_clients[mover].m_move_time;
 
 	send_packet(user_id, &p); //&p로 주지 않으면 복사되어서 날라가니까 성능에 안좋다. 
@@ -514,17 +520,6 @@ void send_stat_change_packet(int user_id, int o_id)
 	send_packet(user_id, &psc);
 }
 
-//void send_near_packet(int client, int new_id)
-//{
-//	// new_id가 들어왔고 이 new id의 정보를 client에게 보내는 것
-//	sc_packet_near packet;
-//	packet.id = new_id;
-//	packet.size = sizeof(packet);
-//	packet.type = S2C_NEAR_PLAYER;
-//	packet.x = g_clients[new_id].x;
-//	packet.y = g_clients[new_id].y;
-//	send_packet(client, &packet);
-//}
 void send_leave_packet(int user_id, int o_id)
 {
 	sc_packet_move p;
@@ -634,11 +629,15 @@ void random_move_npc(int npc_id)
 	if (g_clients[npc_id].target == nullptr && g_clients[npc_id].npcMoveType != NPC_RANDOM_MOVE)
 		return;
 
-	if (g_clients[npc_id].target != nullptr)
+	g_clients[npc_id].target_l.lock();
+	CLIENT* tempTarget = g_clients[npc_id].target;
+	g_clients[npc_id].target_l.unlock();
+
+	if (tempTarget != nullptr)
 	{
 		g_clients[npc_id].path_l.lock();
 		bool ret = g_clients[npc_id].pathfind.searchLoad(g_clients[npc_id].mapData,
-			x, y, g_clients[npc_id].target->x, g_clients[npc_id].target->y);
+			x, y, tempTarget->x, tempTarget->y);
 		g_clients[npc_id].path_l.unlock();
 
 		if (ret)
@@ -649,20 +648,20 @@ void random_move_npc(int npc_id)
 				npc_do_attack(npc_id);
 
 
-			if (g_clients[npc_id].target != nullptr)
+			if (tempTarget != nullptr)
 			{
 				char mess[100];
 				sprintf_s(mess, "I SEE YOU !");
-				send_chat_packet(g_clients[npc_id].target->m_id, npc_id, mess, 0);
+				send_chat_packet(tempTarget->m_id, npc_id, mess, 0);
 			}
 		}
 		else
 		{
-			if (g_clients[npc_id].target != nullptr)
+			if (tempTarget != nullptr)
 			{
 				char mess[100];
 				sprintf_s(mess, "WHERE ARE YOU !");
-				send_chat_packet(g_clients[npc_id].target->m_id, npc_id, mess, 0);
+				send_chat_packet(tempTarget->m_id, npc_id, mess, 0);
 			}
 		}
 	}
@@ -676,6 +675,8 @@ void random_move_npc(int npc_id)
 				if (x < WORLD_WIDTH - 1)
 				{
 					x++;
+					g_clients[npc_id].direction = D_RIGHT;
+
 				}
 			}
 			break;
@@ -685,6 +686,7 @@ void random_move_npc(int npc_id)
 				if (x > 0)
 				{
 					x--;
+					g_clients[npc_id].direction = D_LEFT;
 				}
 			}
 			break;
@@ -694,6 +696,7 @@ void random_move_npc(int npc_id)
 				if (y < WORLD_HEIGHT - 1)
 				{
 					y++;
+					g_clients[npc_id].direction = D_DOWN;
 				}
 			}
 			break;
@@ -703,6 +706,7 @@ void random_move_npc(int npc_id)
 				if (y > 0)
 				{
 					y--;
+					g_clients[npc_id].direction = D_UP;
 				}
 			}
 			break;
@@ -714,6 +718,9 @@ void random_move_npc(int npc_id)
 
 	add_timer(npc_id, OP_RANDOM_MOVE, 1000);
 
+	g_clients[npc_id].target_l.lock();
+	tempTarget = g_clients[npc_id].target;
+	g_clients[npc_id].target_l.unlock();
 
 	for (int i = 0; i < g_totalUserCount; ++i)
 	{
@@ -731,7 +738,7 @@ void random_move_npc(int npc_id)
 				g_clients[i].m_cLock.unlock();
 				send_enter_packet(i, npc_id);
 
-				if (g_clients[npc_id].target == nullptr && g_clients[npc_id].npcCharacterType == NPC_WAR)
+				if (tempTarget == nullptr && g_clients[npc_id].npcCharacterType == NPC_WAR)
 				{
 					g_clients[npc_id].target = &g_clients[i];
 					if (g_clients[npc_id].npcMoveType != NPC_RANDOM_MOVE)
@@ -784,7 +791,7 @@ void do_attack(int user_id)
 			isNPCDie(user_id, npc);
 
 			char mess[100];
-			sprintf_s(mess, "%s -> attack -> NPC %d (-%d).", g_clients[user_id].m_name, npc, g_clients[user_id].level * 2);
+			sprintf_s(mess, "%s -> attack -> %s (-%d).", g_clients[user_id].m_name, g_clients[npc].m_name, g_clients[user_id].level * 2);
 
 			for (int i=0; i< g_totalUserCount; ++i)
 			{
@@ -810,6 +817,7 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 				if (y > 0)
 				{
 					y--;
+					g_clients[user_id].direction = D_UP;
 				}
 			}
 			break;
@@ -819,6 +827,7 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 				if (y < WORLD_HEIGHT - 1)
 				{
 					y++;
+					g_clients[user_id].direction = D_DOWN;
 				}
 			}
 			break;
@@ -828,6 +837,7 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 				if (x > 0)
 				{
 					x--;
+					g_clients[user_id].direction = D_LEFT;
 				}
 			}
 			break;
@@ -837,6 +847,7 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 				if (x < WORLD_WIDTH - 1)
 				{
 					x++;
+					g_clients[user_id].direction = D_RIGHT;
 				}
 			}
 			break;
@@ -1335,7 +1346,7 @@ void worker_Thread()
 			g_clients[user_id].m_cLock.unlock();
 
 			char mess[100];
-			sprintf_s(mess, "USER%d HP(+10)",user_id);
+			sprintf_s(mess, "%s HP(+10)", g_clients[user_id].m_name);
 
 			for (auto vlPlayer : vl)
 			{
@@ -1357,10 +1368,14 @@ void worker_Thread()
 			break;
 		case OP_NPC_ATTACK:
 		{
-			if (g_clients[user_id].target == nullptr)
+			g_clients[user_id].target_l.lock();
+			CLIENT* tempTarget = g_clients[user_id].target;
+			g_clients[user_id].target_l.unlock();
+
+			if (tempTarget == nullptr)
 				break;
 
-			int target_id = g_clients[user_id].target->m_id;
+			int target_id = tempTarget->m_id;
 
 			if (g_clients[target_id].hp == 100)
 			{
@@ -1368,7 +1383,7 @@ void worker_Thread()
 			}
 			g_clients[target_id].hp -= g_clients[user_id].level;
 			char mess[100];
-			sprintf_s(mess, "NPC %d -> attack -> USER %d (-%d)", user_id, target_id, g_clients[user_id].level);
+			sprintf_s(mess, "%s -> attack -> %s (-%d)", g_clients[user_id].m_name, tempTarget->m_name, g_clients[user_id].level);
 			
 			//for (int i = 0; i < g_totalUserCount; ++i)
 				send_chat_packet(target_id, target_id, mess, 1);
@@ -1380,21 +1395,21 @@ void worker_Thread()
 
 				g_clients[target_id].exp /= 2;
 				g_clients[target_id].hp = 100;
-				do_move(g_clients[target_id].m_id, 0, true, 401, 400);
+				do_move(target_id, 0, true, 401, 400);
 
 				for (int i = 0; i < g_totalUserCount; ++i)
-					send_stat_change_packet(i, g_clients[target_id].m_id);
+					send_stat_change_packet(i, target_id);
 				
 				char mess1[100];
 				sprintf_s(mess1, "!!! RESPAWN !!!");
-				send_chat_packet(g_clients[target_id].m_id, g_clients[target_id].m_id ,mess1, 2);
+				send_chat_packet(target_id, target_id,mess1, 2);
 				
 				g_clients[user_id].target = nullptr;
 			}
 			else if (!isdie)
 			{
 				for (int i = 0; i < g_totalUserCount; ++i)
-					send_stat_change_packet(i, g_clients[target_id].m_id);
+					send_stat_change_packet(i, target_id);
 			}
 		}
 			break;

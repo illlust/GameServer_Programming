@@ -75,7 +75,6 @@ public:
 	short hp;
 
 	int motion_index = 0;
-	int direction = 1;
 
 	bool attackFlag = false;
 	bool damageFlag = false;
@@ -85,6 +84,8 @@ public:
 
 	bool npcCharacterType; //0-peace / 1-war
 	bool npcMoveType; //0-고정 / 1-로밍
+
+	char direction = 1;
 
 	OBJECT(sf::Texture& t, int x, int y, int x2, int y2) {
 		m_showing = false;
@@ -132,13 +133,23 @@ public:
 		m_x = x;
 		m_y = y;
 	}
-	void draw(bool isPlayer) {
+	void draw(bool isPlayer, int id) {
 		if (false == m_showing) return;
 		float rx = (m_x - g_left_x) * 65.0f + 8;
 		float ry = (m_y - g_top_y) * 65.0f + 8;
 		
 		//	Body
 		if (isPlayer)
+		{
+			int x = motion_index * 31;
+			int y = direction * 31;
+
+			m_sprite.setTextureRect(sf::IntRect(x, y, 31, 31));
+
+			m_sprite.setPosition(rx - 25, ry - 50);
+			m_sprite.setScale(3.5, 3.5);
+		}
+		else if (id < NPC_ID_START)
 		{
 			int x = motion_index * 31;
 			int y = direction * 31;
@@ -219,12 +230,12 @@ public:
 		rectangle_HPbox.setPosition(sf::Vector2f(rx, ry - 50));
 		rectangle_HPbox.setOutlineThickness(3.0f);
 		rectangle_HPbox.setOutlineColor(sf::Color::White);
-		rectangle_HPbox.setFillColor(sf::Color::Red);
+		rectangle_HPbox.setFillColor(sf::Color(255, 0, 0, 100));
 		rectangle_HPbox.setSize(sf::Vector2f(100, 30));
 		g_window->draw(rectangle_HPbox);
 
 		rectangle_HP.setPosition(sf::Vector2f(rx, ry - 50));
-		rectangle_HP.setFillColor(sf::Color::Green);
+		rectangle_HP.setFillColor(sf::Color(0, 255, 0, 100));
 		rectangle_HP.setSize(sf::Vector2f(hp, 30));
 		g_window->draw(rectangle_HP);
 		
@@ -469,6 +480,7 @@ void ProcessPacket(char* ptr)
 			avatar.move(my_packet->x, my_packet->y);
 			g_left_x = my_packet->x - (SCREEN_WIDTH / 2);
 			g_top_y = my_packet->y - (SCREEN_HEIGHT / 2);
+			//avatar.direction = my_packet->direction;
 			avatar.show();
 		}
 		else {
@@ -476,6 +488,7 @@ void ProcessPacket(char* ptr)
 			{
 				npcs[other_id].move(my_packet->x, my_packet->y);
 				npcs[other_id].show();
+				npcs[other_id].direction = my_packet->direction;
 			}
 		}
 	}
@@ -546,6 +559,11 @@ void ProcessPacket(char* ptr)
 			avatar.show();
 		}
 		else {
+			if (id < NPC_ID_START)
+			{
+				if (npcs[id].hp > my_packet->hp)
+					npcs[id].damageFlag = true;
+			}
 			npcs[id].exp = my_packet->exp;
 			npcs[id].hp = my_packet->hp;
 			npcs[id].level = my_packet->level;
@@ -648,9 +666,9 @@ void client_main()
 			//}
 		}
 	}
-	avatar.draw(true);
+	avatar.draw(true, g_myid);
 	//	for (auto &pl : players) pl.draw();
-	for (auto& npc : npcs) npc.second.draw(false);
+	for (auto& npc : npcs) npc.second.draw(false, npc.first);
 	sf::Text text;
 	text.setFont(g_font);
 	char buf[100];
@@ -676,10 +694,13 @@ void client_main()
 	rectangle_EXPbox.setSize(sf::Vector2f(WINDOW_WIDTH + 500, 25));
 	g_window->draw(rectangle_EXPbox);
 
-	rectangle_EXP.setPosition(sf::Vector2f(100, WINDOW_HEIGHT + 550));
-	rectangle_EXP.setFillColor(sf::Color::Blue);
-	rectangle_EXP.setSize(sf::Vector2f((avatar.exp * (WINDOW_WIDTH + 500)) / (int)(100 * pow(2, (avatar.level - 1))), 25));
-	g_window->draw(rectangle_EXP);
+	if (avatar.level > 0)
+	{
+		rectangle_EXP.setPosition(sf::Vector2f(100, WINDOW_HEIGHT + 550));
+		rectangle_EXP.setFillColor(sf::Color::Blue);
+		rectangle_EXP.setSize(sf::Vector2f((avatar.exp * (WINDOW_WIDTH + 500)) / (int)(100 * pow(2, (avatar.level - 1))), 25));
+		g_window->draw(rectangle_EXP);
+	}
 
 	//total exp level * level * 100 
 
