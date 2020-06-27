@@ -87,8 +87,8 @@ struct CLIENT
 	short hp;
 
 	//npc의 타입
-	bool npcCharacterType; //0-peace / 1-war
-	bool npcMoveType; //0-고정 / 1-로밍
+	char npcCharacterType; //0-peace / 1-war
+	char npcMoveType; //0-고정 / 1-로밍
 	
 	int** mapData;
 	CAStar pathfind;
@@ -1490,8 +1490,12 @@ void init_npc()
 		g_clients[i].hp = 100;
 
 		g_clients[i].moveCount = 0;
-		g_clients[i].npcCharacterType = rand() % 2;
-		g_clients[i].npcMoveType = rand() % 2;
+		g_clients[i].npcCharacterType = rand() % 3;
+
+		if (g_clients[i].npcCharacterType == NPC_SPECIAL)
+			g_clients[i].npcMoveType = NPC_SPECIAL;
+		else
+			g_clients[i].npcMoveType = rand() % 2;
 
 		g_clients[i].mapData = (int**)malloc(sizeof(int*) * WORLD_HEIGHT);
 		for (int j = 0; j < WORLD_HEIGHT; j++) {

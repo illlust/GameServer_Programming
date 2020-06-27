@@ -2,7 +2,7 @@
 
 #define SERVER_PORT		9000
 #define NPC_ID_START	3000
-#define NUM_NPC			2000
+#define NUM_NPC			3000
 
 constexpr int MAX_ID_LEN = 50;
 constexpr int MAX_STR_LEN = 80;
@@ -37,6 +37,8 @@ constexpr auto VIEW_RADIUS = 7;
 
 #define NPC_FIX 0
 #define NPC_RANDOM_MOVE 1
+
+#define NPC_SPECIAL 2
 
 enum GRID_TYPE
 {
@@ -102,8 +104,8 @@ struct sc_packet_enter {
 	char o_type;
 	short x, y;
 
-	bool npcCharacterType; //0-peace / 1-war
-	bool npcMoveType; //0-고정 / 1-로밍
+	char npcCharacterType; //0-peace / 1-war
+	char npcMoveType; //0-고정 / 1-로밍
 
 };
 

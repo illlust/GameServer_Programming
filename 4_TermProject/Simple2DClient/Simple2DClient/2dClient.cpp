@@ -82,8 +82,8 @@ public:
 	int attack_index = 0;
 	int damage_index = 0;
 
-	bool npcCharacterType; //0-peace / 1-war
-	bool npcMoveType; //0-고정 / 1-로밍
+	char npcCharacterType; //0-peace / 1-war
+	char npcMoveType; //0-고정 / 1-로밍
 
 	char direction = 1;
 
@@ -390,7 +390,7 @@ void client_initialize()
 	}
 	board->loadFromFile("mapTile.bmp");
 	//board->loadFromFile("chessmap.bmp");
-	pacman_pieces->loadFromFile("pacman.png");
+	pacman_pieces->loadFromFile("pacman1.png");
 	player_pieces->loadFromFile("resize.png");
 	//player_pieces->loadFromFile("player.png");
 	blank_tile = OBJECT{ *board, 0, 0, 65, 65 };
@@ -461,6 +461,9 @@ void ProcessPacket(char* ptr)
 					npcs[id] = OBJECT{ *pacman_pieces, 0, 31 * 2, 31, 31 };
 				else if (my_packet->npcCharacterType == NPC_WAR && my_packet->npcMoveType == NPC_RANDOM_MOVE) //노랑
 					npcs[id] = OBJECT{ *pacman_pieces, 0, 31 * 3, 31, 31 };
+				else
+					npcs[id] = OBJECT{ *pacman_pieces, 0, 31 * 4, 31, 31 };
+
 			}
 			npcs[id].npcCharacterType = my_packet->npcCharacterType;
 			npcs[id].npcMoveType = my_packet->npcMoveType;
