@@ -433,7 +433,16 @@ void ProcessPacket(char* ptr)
 		avatar.move(my_packet->x, my_packet->y);
 		g_left_x = my_packet->x - (SCREEN_WIDTH / 2);
 		g_top_y = my_packet->y - (SCREEN_HEIGHT / 2);
+		avatar.hp = my_packet->hp;
+		avatar.exp = my_packet->exp;
+		avatar.level = my_packet->level;
+		avatar.m_x = my_packet->x;
+		avatar.m_y = my_packet->y;
 		avatar.show();
+
+		printf("로그인 성공 !!\n");
+		printf("( %d, %d ) lv : %d \t exp : %d \t hp : %d \n",
+			avatar.m_x, avatar.m_y, avatar.level, avatar.exp, avatar.hp);
 	}
 	break;
 
@@ -743,8 +752,12 @@ void send_attack_packet()
 
 int main()
 {
+	printf("IP : ");
+	char ip[50];
+	scanf_s("%s", ip,50);
+
 	wcout.imbue(locale("korean"));
-	sf::Socket::Status status = g_socket.connect("127.0.0.1", SERVER_PORT);
+	sf::Socket::Status status = g_socket.connect(ip, SERVER_PORT);
 	g_socket.setBlocking(false);
 
 	if (status != sf::Socket::Done) {

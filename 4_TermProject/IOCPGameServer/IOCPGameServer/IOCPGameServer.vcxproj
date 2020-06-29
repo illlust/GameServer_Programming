@@ -116,7 +116,9 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="CAStar.h" />
+    <ClInclude Include="CBresenham.h" />
     <ClInclude Include="CDataBase.h" />
+    <ClInclude Include="CJumpPointSearch.h" />
     <ClInclude Include="lauxlib.h" />
     <ClInclude Include="lua.h" />
     <ClInclude Include="lua.hpp" />
@@ -126,7 +128,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="CAStar.cpp" />
+    <ClCompile Include="CBresenham.cpp" />
     <ClCompile Include="CDataBase.cpp" />
+    <ClCompile Include="CJumpPointSearch.cpp" />
     <ClCompile Include="IOCPServer.cpp" />
   </ItemGroup>
   <ItemGroup>

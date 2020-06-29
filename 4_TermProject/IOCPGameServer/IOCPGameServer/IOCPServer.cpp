@@ -15,6 +15,8 @@
 #include "CDataBase.h"
 #include "protocol.h"
 #include "CAStar.h"
+#include "CJumpPointSearch.h"
+#include "CBresenham.h"
 
 #pragma comment (lib, "WS2_32.lib")
 #pragma comment (lib, "mswsock.lib")
@@ -91,7 +93,10 @@ struct CLIENT
 	char npcMoveType; //0-고정 / 1-로밍
 	
 	int** mapData;
-	CAStar pathfind;
+	CAStar AStar_pathfind;
+	CJumpPointSearch JPS_pathfind;
+	CBresenham bresenham;
+
 	mutex path_l;
 
 	CLIENT* target = nullptr;
@@ -418,10 +423,10 @@ void send_packet(int user_id, void *p)
 void send_login_ok_packet(int user_id)
 {
 	sc_packet_login_ok p;
-	p.exp = 0;
-	p.hp = 0;
+	p.exp = g_clients[user_id].exp;
+	p.hp = g_clients[user_id].hp;
 	p.id = user_id;
-	p.level = 0;
+	p.level = g_clients[user_id].level;
 	p.size = sizeof(p);
 	p.type = S2C_LOGIN_OK;
 	p.x = g_clients[user_id].x;
@@ -635,14 +640,29 @@ void random_move_npc(int npc_id)
 
 	if (tempTarget != nullptr)
 	{
-		g_clients[npc_id].path_l.lock();
-		bool ret = g_clients[npc_id].pathfind.searchLoad(g_clients[npc_id].mapData,
-			x, y, tempTarget->x, tempTarget->y);
-		g_clients[npc_id].path_l.unlock();
+		bool ret;
+		if (g_clients[npc_id].npcCharacterType == NPC_SPECIAL)
+		{
+			g_clients[npc_id].path_l.lock();
+			ret = g_clients[npc_id].AStar_pathfind.searchLoad(g_clients[npc_id].mapData,
+				x, y, tempTarget->x, tempTarget->y);
+			g_clients[npc_id].path_l.unlock();
+		}
+		else
+		{
+			g_clients[npc_id].path_l.lock();
+			ret = g_clients[npc_id].AStar_pathfind.searchLoad(g_clients[npc_id].mapData,
+				x, y, tempTarget->x, tempTarget->y);
+			g_clients[npc_id].path_l.unlock();
+		}
 
 		if (ret)
 		{
-			bool isattack = g_clients[npc_id].pathfind.returnPos(&x, &y);
+			bool isattack;
+			if (g_clients[npc_id].npcCharacterType == NPC_SPECIAL)
+				isattack = g_clients[npc_id].AStar_pathfind.returnPos(&x, &y);
+			else
+				isattack = g_clients[npc_id].AStar_pathfind.returnPos(&x, &y);
 
 			if (isattack)
 				npc_do_attack(npc_id);
@@ -716,7 +736,10 @@ void random_move_npc(int npc_id)
 	g_clients[npc_id].x = x;
 	g_clients[npc_id].y = y;
 
-	add_timer(npc_id, OP_RANDOM_MOVE, 1000);
+	if(g_clients[npc_id].npcCharacterType == NPC_SPECIAL)
+		add_timer(npc_id, OP_RANDOM_MOVE, 500);
+	else
+		add_timer(npc_id, OP_RANDOM_MOVE, 1000);
 
 	g_clients[npc_id].target_l.lock();
 	tempTarget = g_clients[npc_id].target;
@@ -919,7 +942,7 @@ void do_move(int user_id, int direction, bool isDirect, int _Directx = 0, int _D
 		{
 			send_enter_packet(user_id, newPlayer);
 
-			if (false == is_player(newPlayer) && g_clients[newPlayer].npcCharacterType == NPC_WAR)
+			if (false == is_player(newPlayer) && g_clients[newPlayer].npcCharacterType != NPC_PEACE)
 			{
 				if (g_clients[newPlayer].target == nullptr)
 				{

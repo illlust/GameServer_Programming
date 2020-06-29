@@ -16,6 +16,9 @@
     <Filter Include="소스 파일\AStarPathFind">
       <UniqueIdentifier>{532e8340-9193-4554-99ac-99ec46dd97c3}</UniqueIdentifier>
     </Filter>
+    <Filter Include="소스 파일\JPSPathFind">
+      <UniqueIdentifier>{d9379aa7-8237-454f-9781-003753285880}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="protocol.h">
@@ -42,6 +45,12 @@
     <ClInclude Include="CAStar.h">
       <Filter>소스 파일\AStarPathFind</Filter>
     </ClInclude>
+    <ClInclude Include="CBresenham.h">
+      <Filter>소스 파일\JPSPathFind</Filter>
+    </ClInclude>
+    <ClInclude Include="CJumpPointSearch.h">
+      <Filter>소스 파일\JPSPathFind</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="IOCPServer.cpp">
@@ -52,6 +61,12 @@
     </ClCompile>
     <ClCompile Include="CAStar.cpp">
       <Filter>소스 파일\AStarPathFind</Filter>
+    </ClCompile>
+    <ClCompile Include="CBresenham.cpp">
+      <Filter>소스 파일\JPSPathFind</Filter>
+    </ClCompile>
+    <ClCompile Include="CJumpPointSearch.cpp">
+      <Filter>소스 파일\JPSPathFind</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -1,18 +1,18 @@
 #pragma once
 #include <list>
 
-struct NODE
+struct _NODE
 {
 	int ix;
 	int iy;
-	NODE *pParent;
+	_NODE *pParent;
 
 	double	F;	//G+H
 	double	G;	//출발점
 	int		H;	//목적지와 거리
 
 
-	NODE(int x, int y, NODE* parent)
+	_NODE(int x, int y, _NODE* parent)
 	{
 		ix = x;
 		iy = y;
@@ -28,10 +28,10 @@ public :
 	int iendY;
 	int istartX;
 	int istartY;
-	NODE* endNode;
+	_NODE* endNode;
 public:
-	std::list<NODE*> openList;
-	std::list<NODE*> closeList;
+	std::list<_NODE*> openList;
+	std::list<_NODE*> closeList;
 
 
 public:
@@ -40,13 +40,13 @@ public:
 
 
 	//직선
-	void setG(NODE* _node);
+	void setG(_NODE* _node);
 	//대각선
-	void setG_dia(NODE* _node);
-	bool compareG(int** mapData, NODE* _node, bool isDia, int dir);
+	void setG_dia(_NODE* _node);
+	bool compareG(int** mapData, _NODE* _node, bool isDia, int dir);
 
-	void setH(NODE* _node);
-	void setF(NODE* _node);
+	void setH(_NODE* _node);
+	void setF(_NODE* _node);
 
 	void setEndPos(int x, int y);
 	void setStartPos(int x, int y);

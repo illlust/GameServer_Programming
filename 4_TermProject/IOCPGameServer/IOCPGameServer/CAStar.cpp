@@ -5,7 +5,7 @@
 extern MAP g_Map[WORLD_HEIGHT][WORLD_WIDTH];
 
 
-bool FComp(const NODE* lhs, const NODE* rhs) {
+bool FComp(const _NODE* lhs, const _NODE* rhs) {
 	return lhs->F < rhs->F;
 };
 
@@ -20,7 +20,7 @@ CAStar::~CAStar()
 {
 }
 
-void CAStar::setG(NODE* _node)
+void CAStar::setG(_NODE* _node)
 {
 	if (_node->pParent != nullptr)
 		_node->G = _node->pParent->G + 1;
@@ -28,7 +28,7 @@ void CAStar::setG(NODE* _node)
 		_node->G = 0;
 }
 
-void CAStar::setG_dia(NODE * _node)
+void CAStar::setG_dia(_NODE * _node)
 {
 	if (_node->pParent != nullptr)
 		_node->G = _node->pParent->G + 1.5;
@@ -36,9 +36,9 @@ void CAStar::setG_dia(NODE * _node)
 		_node->G = 0;
 }
 
-bool CAStar::compareG(int** mapData, NODE* _node, bool isDia, int dir)
+bool CAStar::compareG(int** mapData, _NODE* _node, bool isDia, int dir)
 {
-	std::list<NODE*>::iterator iter;
+	std::list<_NODE*>::iterator iter;
 
 	int x = _node->ix;
 	int y = _node->iy;
@@ -111,12 +111,12 @@ bool CAStar::compareG(int** mapData, NODE* _node, bool isDia, int dir)
 	return false;
 }
 
-void CAStar::setH(NODE * _node)
+void CAStar::setH(_NODE * _node)
 {
 	_node->H = abs(_node->ix - iendX) + abs(_node->iy - iendY);
 }
 
-void CAStar::setF(NODE * _node)
+void CAStar::setF(_NODE * _node)
 {
 	_node->F = _node->G + _node->H;
 }
@@ -138,7 +138,7 @@ bool CAStar::returnPos(int * x, int * y)
 	if (endNode == nullptr)
 		return false;
 
-	NODE* temp = endNode;
+	_NODE* temp = endNode;
 
 	if (temp->pParent == nullptr)
 	{
@@ -170,7 +170,7 @@ bool CAStar::returnPos(int * x, int * y)
 
 bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int _endY)
 {
-	std::list<NODE*>::iterator iter;
+	std::list<_NODE*>::iterator iter;
 	while (openList.empty() == false)
 	{
 		iter = openList.begin();
@@ -190,7 +190,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 
 
 	//openlist에 시작 노드 추가
-	NODE* newNode = nullptr;
+	_NODE* newNode = nullptr;
 
 	mapData[_startY][_startX] = eSTART;
 	mapData[_endY][_endX] = eEND;
@@ -198,7 +198,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 	setStartPos(_startX, _startY);
 	setEndPos(_endX, _endY);
 
-	newNode = new NODE(_startX, _startY, nullptr);
+	newNode = new _NODE(_startX, _startY, nullptr);
 	
 	setG(newNode);
 	setH(newNode);
@@ -214,7 +214,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 			return false;
 	
 		openList.sort(FComp);
-		NODE* popNode = openList.front();
+		_NODE* popNode = openList.front();
 		openList.pop_front();
 	
 		//길찾기 끝
@@ -257,7 +257,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 				}
 				else if ((g_Map[y - 1][x - 1].type == eBLANK) || (g_Map[y - 1][x - 1].type == eEND))
 				{
-					NODE* newNode = new NODE(x - 1, y - 1, popNode);
+					_NODE* newNode = new _NODE(x - 1, y - 1, popNode);
 					setG_dia(newNode);
 					setH(newNode);
 					setF(newNode);
@@ -280,7 +280,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 				}
 				else if ((g_Map[y - 1][x].type == eBLANK) || (g_Map[y - 1][x].type == eEND))
 				{
-					NODE* newNode = new NODE(x, y - 1, popNode);
+					_NODE* newNode = new _NODE(x, y - 1, popNode);
 					setG(newNode);
 					setH(newNode);
 					setF(newNode);
@@ -303,7 +303,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 				}
 				else if ((g_Map[y - 1][x + 1].type == eBLANK) || (g_Map[y - 1][x + 1].type == eEND))
 				{
-					NODE* newNode = new NODE(x + 1, y - 1, popNode);
+					_NODE* newNode = new _NODE(x + 1, y - 1, popNode);
 					setG_dia(newNode);
 					setH(newNode);
 					setF(newNode);
@@ -326,7 +326,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 				}
 				else if ((g_Map[y][x - 1].type == eBLANK) || (g_Map[y][x - 1].type == eEND))
 				{
-					NODE* newNode = new NODE(x - 1, y, popNode);
+					_NODE* newNode = new _NODE(x - 1, y, popNode);
 					setG(newNode);
 					setH(newNode);
 					setF(newNode);
@@ -350,7 +350,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 				}
 				else if ((g_Map[y][x + 1].type == eBLANK) || (g_Map[y][x + 1].type == eEND))
 				{
-					NODE* newNode = new NODE(x + 1, y, popNode);
+					_NODE* newNode = new _NODE(x + 1, y, popNode);
 					setG(newNode);
 					setH(newNode);
 					setF(newNode);
@@ -373,7 +373,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 				}
 				else if ((g_Map[y + 1][x - 1].type == eBLANK) || (g_Map[y + 1][x - 1].type == eEND))
 				{
-					NODE* newNode = new NODE(x - 1, y + 1, popNode);
+					_NODE* newNode = new _NODE(x - 1, y + 1, popNode);
 					setG_dia(newNode);
 					setH(newNode);
 					setF(newNode);
@@ -397,7 +397,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 				}
 				else if ((g_Map[y + 1][x].type == eBLANK) || (g_Map[y + 1][x].type == eEND))
 				{
-					NODE* newNode = new NODE(x, y + 1, popNode);
+					_NODE* newNode = new _NODE(x, y + 1, popNode);
 					setG(newNode);
 					setH(newNode);
 					setF(newNode);
@@ -421,7 +421,7 @@ bool CAStar::searchLoad(int** mapData, int _startX, int _startY, int _endX, int 
 				}
 				else if ((g_Map[y + 1][x + 1].type == eBLANK) || (g_Map[y + 1][x + 1].type == eEND))
 				{
-					NODE* newNode = new NODE(x + 1, y + 1, popNode);
+					_NODE* newNode = new _NODE(x + 1, y + 1, popNode);
 					setG_dia(newNode);
 					setH(newNode);
 					setF(newNode);
