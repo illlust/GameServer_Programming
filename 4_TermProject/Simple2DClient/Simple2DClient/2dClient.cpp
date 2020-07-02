@@ -10,7 +10,8 @@ using namespace chrono;
 
 #pragma comment (lib, "winmm.lib")
 
-#include "..\..\IOCPGameServer\IOCPGameServer\protocol.h"
+//#include "..\..\IOCPGameServer\IOCPGameServer\protocol.h"
+#include "protocol.h"
 
 //#pragma comment(lib, "sfml_network.lib")
 
